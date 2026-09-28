@@ -1,0 +1,28 @@
+sequenceDiagram
+  autonumber
+  actor User as MPCA Staff
+  participant SPA as React SPA<br/>(LoginPage)
+  participant AC as AuthContext
+  participant SB as Supabase Auth
+  participant DB as Postgres<br/>(public.users)
+
+  User->>SPA: Enter email
+  SPA->>SB: rpc('auth_email_is_registered', email)
+  SB->>DB: SELECT exists() WHERE email AND status='Active'
+  DB-->>SB: true / false
+  SB-->>SPA: { registered }
+  alt email not registered
+    SPA-->>User: "Email not recognized"
+  else email registered
+    SPA->>SB: signInWithOtp({ email })
+    SB-->>User: Email with 8-digit code
+    User->>SPA: Enter 8-digit code
+    SPA->>SB: verifyOtp({ email, token, type:'email' })
+    SB-->>SPA: { session, user, JWT }
+    SPA->>AC: setSession(session)
+    AC->>DB: SELECT * FROM users WHERE email = JWT.email
+    Note over DB: RLS lets authenticated<br/>users read their own row
+    DB-->>AC: app user row (role, group)
+    AC-->>SPA: user context populated
+    SPA-->>User: Redirect to dashboard
+  end

@@ -1,0 +1,111 @@
+erDiagram
+  USERS ||--o{ CHALLENGES : "createdBy"
+  USERS }o--|| DEPARTMENTS : "groupId"
+  USERS ||--o{ PARTICIPATION : "userId"
+  USERS ||--o{ ACTIVITY_LOGS : "userId"
+  USERS ||--o{ CHALLENGE_PARTICIPANTS : "userId"
+
+  DEPARTMENTS ||--o{ CHALLENGES : "groupId"
+
+  CHALLENGES ||--o{ CHALLENGE_ACTIONS : "challengeId"
+  CHALLENGES ||--o{ CHALLENGE_PARTICIPANTS : "challengeId"
+  CHALLENGES ||--o{ PARTICIPATION : "challengeId"
+
+  ACTIONS ||--o{ CHALLENGE_ACTIONS : "actionId"
+  ACTIONS ||--o{ PARTICIPATION : "actionId"
+
+  TEMPLATES }o--|| DEPARTMENTS : "participantGroup"
+  TEMPLATES }o--|| USERS : "createdBy"
+
+  CATEGORIES ||--o{ CHALLENGES : "name"
+
+  USERS {
+    bigint id PK
+    text name
+    text email UK
+    text role "SuperAdmin Admin GeneralUser"
+    text status "Active Deactivated"
+    bigint groupId FK
+    date createdAt
+    date lastActive
+  }
+
+  DEPARTMENTS {
+    bigint id PK
+    text name
+    text description
+    date createdAt
+  }
+
+  CATEGORIES {
+    serial id PK
+    varchar name UK
+    text description
+    timestamptz createdAt
+  }
+
+  ACTIONS {
+    bigint id PK
+    text name
+    text description
+    text category
+    integer points
+  }
+
+  CHALLENGES {
+    bigint id PK
+    text name
+    text description
+    text category
+    text theme
+    varchar bgColorHeader
+    varchar txColorHeader
+    varchar bgColorBody
+    varchar txColorBody
+    date startDate
+    date endDate
+    date joinBy
+    text status
+    bigint createdBy FK
+    bigint groupId FK
+    integer participantCount
+  }
+
+  CHALLENGE_ACTIONS {
+    bigint challengeId PK_FK
+    bigint actionId PK_FK
+  }
+
+  CHALLENGE_PARTICIPANTS {
+    bigint challengeId PK_FK
+    bigint userId PK_FK
+  }
+
+  TEMPLATES {
+    bigint id PK
+    text name
+    text description
+    text category
+    text theme
+    bigint createdBy FK
+    bigint participantGroup FK
+    date createdAt
+  }
+
+  PARTICIPATION {
+    bigint id PK
+    bigint userId FK
+    bigint challengeId FK
+    bigint actionId FK
+    date completedAt
+    text notes
+    text photoUrl
+  }
+
+  ACTIVITY_LOGS {
+    bigint id PK
+    bigint userId FK
+    text action
+    timestamptz timestamp
+    text details
+  }

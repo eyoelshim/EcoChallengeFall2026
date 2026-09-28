@@ -1,0 +1,20 @@
+flowchart TB
+  classDef person fill:#08427b,stroke:#052e56,color:#fff
+  classDef personExt fill:#686868,stroke:#4a4a4a,color:#fff
+  classDef system fill:#1168bd,stroke:#0b4884,color:#fff
+  classDef systemExt fill:#999,stroke:#6b6b6b,color:#fff
+
+  staff(["MPCA Staff<br/><br/>SuperAdmin / Admin /<br/>GeneralUser roles"]):::person
+  participant(["Challenge Participant<br/><br/>Logs sustainability actions"]):::personExt
+
+  admin["GreenStep Admin Console<br/><br/>Web app for managing challenges,<br/>users, groups, templates, reports"]:::system
+
+  mobile["GreenStep Mobile App<br/><br/>Team 1 user-facing app<br/>(shares the database)"]:::systemExt
+  supabase["Supabase<br/><br/>Postgres + Auth + REST + RLS"]:::systemExt
+  vercel["Vercel<br/><br/>Hosts SPA +<br/>serverless functions"]:::systemExt
+
+  staff -->|"Manages challenges,<br/>runs reports (HTTPS)"| admin
+  participant -->|"Logs actions (HTTPS)"| mobile
+  admin -->|"Reads/writes via<br/>@supabase/supabase-js (HTTPS)"| supabase
+  mobile -->|"Reads/writes<br/>(shared schema, HTTPS)"| supabase
+  admin -.->|"Hosted on"| vercel

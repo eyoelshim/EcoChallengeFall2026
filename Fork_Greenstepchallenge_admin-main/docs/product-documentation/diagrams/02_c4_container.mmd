@@ -1,0 +1,21 @@
+flowchart TB
+  classDef person fill:#08427b,stroke:#052e56,color:#fff
+  classDef container fill:#438dd5,stroke:#2e6295,color:#fff
+  classDef containerDb fill:#438dd5,stroke:#2e6295,color:#fff
+  classDef systemExt fill:#999,stroke:#6b6b6b,color:#fff
+
+  staff(["MPCA Staff<br/><br/>Browser-based"]):::person
+
+  subgraph boundary["GreenStep Admin Console (deployed on Vercel)"]
+    spa["React SPA<br/><br/>React 19 + Vite + MUI v7<br/><br/>Renders all admin pages;<br/>talks to Supabase directly<br/>via supabase-js"]:::container
+    fns["Vercel Serverless Functions<br/><br/>Node.js (api/)<br/><br/>Privileged ops only:<br/>invite-user, set-user-active<br/>(uses Supabase service-role key)"]:::container
+    local[("Browser localStorage<br/><br/>Per-user dashboard<br/>layout cache")]:::containerDb
+  end
+
+  supabase["Supabase<br/><br/>Postgres + Auth + RLS"]:::systemExt
+
+  staff -->|"Uses (HTTPS)"| spa
+  spa -->|"Reads/writes<br/>(anon key, RLS-enforced, HTTPS)"| supabase
+  spa -->|"Calls for invites +<br/>activate/deactivate (HTTPS)"| fns
+  fns -->|"Admin ops with<br/>service-role key (HTTPS)"| supabase
+  spa -.->|"Persists dashboard layout"| local

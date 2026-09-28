@@ -1,0 +1,46 @@
+flowchart TB
+  classDef backbone fill:#0d47a1,stroke:#082f6f,color:#fff,font-weight:bold
+  classDef release fill:#1976d2,stroke:#0d47a1,color:#fff
+  classDef story fill:#bbdefb,stroke:#1976d2,color:#000
+
+  subgraph Backbone["User Backbone (left to right = the admin's day)"]
+    direction LR
+    b1["Set up program"]:::backbone --> b2["Run challenge"]:::backbone --> b3["Track engagement"]:::backbone --> b4["Report to leadership"]:::backbone
+  end
+
+  subgraph R1["Release 1 - MVP"]
+    direction TB
+    s1a["Invite admin users"]:::story
+    s1b["Create a group<br/>(dept / cohort)"]:::story
+    s1c["Add members<br/>to a group"]:::story
+    s2a["Create a challenge<br/>from scratch"]:::story
+    s2b["Apply a template<br/>to seed a challenge"]:::story
+    s2c["Add actions to<br/>a challenge"]:::story
+    s3a["See per-user<br/>points"]:::story
+    s3b["See group<br/>leaderboard"]:::story
+    s4a["Export participation<br/>to CSV"]:::story
+    s4b["Filter report<br/>by challenge / date"]:::story
+  end
+
+  subgraph R2["Release 2 - Polish"]
+    direction TB
+    s2d["Custom theme colors<br/>per challenge"]:::story
+    s3c["Customizable dashboard<br/>with drag/drop widgets"]:::story
+    s3d["4 quick-layout presets"]:::story
+    s4c["Live mobile preview<br/>while editing"]:::story
+  end
+
+  subgraph R3["Future"]
+    direction TB
+    f1["Photo moderation"]:::story
+    f2["Push notifications"]:::story
+    f3["Saved report templates"]:::story
+    f4["Server-side<br/>layout persistence"]:::story
+  end
+
+  b1 --> s1a & s1b & s1c
+  b2 --> s2a & s2b & s2c & s2d
+  b3 --> s3a & s3b & s3c & s3d
+  b4 --> s4a & s4b & s4c
+
+  R1 --> R2 --> R3

@@ -1,0 +1,139 @@
+/**
+ * @file App.jsx
+ * @summary Top-level route table.
+ *
+ * Public routes:
+ *   - `/login`             magic-link / dev login screen.
+ *   - `/auth/callback`     Supabase OAuth redirect target.
+ *
+ * Everything else lives behind `<RequireAuth>` + `<AdminLayout>` and
+ * routes that perform mutations are additionally wrapped in
+ * `<RequireAuth minRole=...>` so role checks happen at the route layer
+ * rather than inside each page.
+ */
+
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+
+import AdminLayout from "./components/layout/AdminLayout";
+import { ROLES } from "./data/api";
+import AuthCallback from "./features/auth/AuthCallback";
+import LoginPage from "./features/auth/LoginPage";
+import RequireAuth from "./features/auth/RequireAuth";
+import ChallengeDetail from "./features/challenges/ChallengeDetail";
+import ChallengeForm from "./features/challenges/ChallengeForm";
+import ChallengesPage from "./features/challenges/ChallengesPage";
+import DashboardPage from "./features/dashboard/DashboardPage";
+import GroupDetail from "./features/groups/GroupDetail";
+import GroupForm from "./features/groups/GroupForm";
+import GroupsPage from "./features/groups/GroupsPage";
+import TemplateForm from "./features/presets/TemplateForm";
+import TemplatesPage from "./features/presets/TemplatesPage";
+import ReportsPage from "./features/reports/ReportsPage";
+import UserDetail from "./features/users/UserDetail";
+import UserForm from "./features/users/UserForm";
+import UsersPage from "./features/users/UsersPage";
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+
+        <Route
+          element={
+            <RequireAuth>
+              <AdminLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<DashboardPage />} />
+
+          <Route path="challenges" element={<ChallengesPage />} />
+          <Route
+            path="challenges/new"
+            element={
+              <RequireAuth minRole={ROLES.ADMIN}>
+                <ChallengeForm />
+              </RequireAuth>
+            }
+          />
+          <Route path="challenges/:id" element={<ChallengeDetail />} />
+          <Route
+            path="challenges/:id/edit"
+            element={
+              <RequireAuth minRole={ROLES.ADMIN}>
+                <ChallengeForm />
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="templates"
+            element={
+              <RequireAuth minRole={ROLES.ADMIN}>
+                <TemplatesPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="templates/new"
+            element={
+              <RequireAuth minRole={ROLES.ADMIN}>
+                <TemplateForm />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="templates/:id/edit"
+            element={
+              <RequireAuth minRole={ROLES.ADMIN}>
+                <TemplateForm />
+              </RequireAuth>
+            }
+          />
+
+          <Route path="groups" element={<GroupsPage />} />
+          <Route
+            path="groups/new"
+            element={
+              <RequireAuth minRole={ROLES.ADMIN}>
+                <GroupForm />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="groups/:id/edit"
+            element={
+              <RequireAuth minRole={ROLES.ADMIN}>
+                <GroupForm />
+              </RequireAuth>
+            }
+          />
+          <Route path="groups/:id" element={<GroupDetail />} />
+
+          <Route path="users" element={<UsersPage />} />
+          <Route
+            path="users/new"
+            element={
+              <RequireAuth minRole={ROLES.SUPER_ADMIN}>
+                <UserForm />
+              </RequireAuth>
+            }
+          />
+          <Route path="users/:id" element={<UserDetail />} />
+          <Route
+            path="users/:id/edit"
+            element={
+              <RequireAuth minRole={ROLES.ADMIN}>
+                <UserForm />
+              </RequireAuth>
+            }
+          />
+
+          <Route path="reports" element={<ReportsPage />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
+}

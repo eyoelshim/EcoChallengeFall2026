@@ -1,0 +1,141 @@
+% =====================================================================
+% GreenStep Challenge Admin -- Project Cover Letter
+% CISC 480 Senior Capstone, Spring 2026
+% =====================================================================
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{parskip}
+\usepackage{microtype}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black,
+  pdftitle={GreenStep Admin Console -- Project Cover Letter},
+  pdfauthor={Team 2: Josh Dunlap, Eli Goldberger, Khue Vo, Rudy Vergara}
+}
+
+\pagestyle{empty}
+\setlength{\parskip}{0.6em}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+
+% ---- Sender block ----
+\begin{flushleft}
+\textbf{Team 2 -- GreenStep Capstone} \\
+Department of Computer and Information Sciences \\
+University of St.\ Thomas \\
+2115 Summit Avenue \\
+St.\ Paul, MN 55105 \\
+\href{https://github.com/CISC-480-GreenStep/sp26_team2_greenstepchallenge_admin}{github.com/CISC-480-GreenStep/sp26\_team2\_greenstepchallenge\_admin}
+\end{flushleft}
+
+\vspace{1em}
+May 21, 2026
+
+\vspace{1em}
+
+% ---- Recipient block ----
+\begin{flushleft}
+Kristin Mroz-Risse \\
+Sustainability Program Coordinator \\
+Minnesota Pollution Control Agency \\
+520 Lafayette Road North \\
+St.\ Paul, MN 55155
+
+\vspace{0.5em}
+And to future student teams \\
+Department of Computer and Information Sciences \\
+University of St.\ Thomas
+\end{flushleft}
+
+\vspace{1.5em}
+
+% ---- Salutation ----
+Dear Kristin and future student teams,
+
+% ---- Body ----
+This letter accompanies the final deliverables for the GreenStep Challenge Admin
+Console, the spring 2026 CISC~480 capstone project at the University of St.\ Thomas.
+We are writing both to summarize what we built and to make it as easy as possible
+for whoever picks the work up next to keep going.
+
+\textbf{Project summary and impact.} MPCA runs annual sustainability challenges
+that ask staff to log everyday actions across food, energy, transportation,
+water, and consumption categories. Before this project, that program lived in
+spreadsheets and email. The GreenStep Admin Console replaces that workflow with
+a single web application backed by a managed Postgres database. The application
+lets MPCA administrators design challenges, organize participants into flexible
+groups (departments, cohorts, building-level competitions), monitor engagement
+on a customizable drag-and-drop dashboard, and export participation reports for
+leadership. The console runs at \url{https://greenstep.auriga.fyi} and exposes
+three role tiers (SuperAdmin, Admin, GeneralUser) enforced at the database
+layer through Postgres Row-Level Security so authorization cannot be bypassed
+from the browser.
+
+\textbf{Constraints, limitations, and next steps.} The capstone reached a
+working v0.9.0 build, but we want to be transparent about what is \emph{not} in
+the box. The standalone Reports page and the new Participation Report dashboard
+widget still coexist; consolidating them under a single ``Report and Analysis''
+surface is GitHub issue~\#40 and is partially complete. Two stub tables,
+\texttt{badges} and \texttt{tickets}, were planned but not finished; their UI
+shells exist on a closed pull request (\#80) and are tracked in issue~\#90. The
+legacy \texttt{presets} / \texttt{preset\_actions} tables remain on the live
+database even though no application code reads from them (issue~\#88). A few
+schema-versus-UI inconsistencies around challenge color fields are documented
+in issue~\#89. Photo moderation, push notifications, and multi-device dashboard
+layout sync are noted as future work in the Project Report. The mobile
+application built by Team~1 shares the same database but the two surfaces have
+not been exercised together at scale.
+
+\textbf{Implementation and continuity guidance.} The repository is structured
+to be readable on first contact. The top-level \texttt{README.md} explains the
+project and how to run it; the \texttt{docs/} folder holds the architecture
+map, the consolidated product documentation (PRD, UX spec, technical design,
+source-code docs, QA activities), and this project report. Coding standards
+live in \texttt{CODING\_GUIDELINES.md} and are enforced by ESLint and a
+300-line-per-file cap. The database schema is consolidated into two migration
+files (\texttt{001\_initial\_schema.sql} and \texttt{002\_seed\_data.sql}); we
+squashed fourteen historical migrations into this baseline so the next team
+has one place to look, not fourteen.
+
+We would suggest three concrete starting moves for the next team:
+(1)~run \texttt{supabase db reset} locally against the consolidated baseline
+and confirm the schema matches production;
+(2)~walk through issues \#40, \#88, \#89, and \#90 in that order to land the
+small hand-off items the team already mapped out; and
+(3)~book an early meeting with Kristin to confirm whether the standalone
+Reports page should be retired before any new features are added.
+
+\textbf{Gratitude.} Kristin, thank you for the time, candor, and flexibility
+you gave us across the semester. The willingness to walk us through how the
+agency actually runs these challenges, the patience as our design shifted from
+a FastAPI backend to Supabase, and the steady focus on the people the program
+is for made this a project we are proud to put our names on. The application
+exists because you were willing to treat four student developers as real
+collaborators, and we hope the next team gets the same opportunity.
+
+\vspace{1em}
+
+% ---- Closing ----
+Sincerely,
+
+\vspace{3em}
+
+% ---- Signature block ----
+\begin{tabular}{@{}p{0.45\linewidth}p{0.45\linewidth}@{}}
+\rule{0.4\linewidth}{0.4pt} & \rule{0.4\linewidth}{0.4pt} \\
+Josh Dunlap & Eli Goldberger \\[1.5em]
+\rule{0.4\linewidth}{0.4pt} & \rule{0.4\linewidth}{0.4pt} \\
+Khue Vo & Rudy Vergara \\
+\end{tabular}
+
+\vspace{1em}
+Team 2 -- CISC 480 Senior Capstone, Section 01 (Spring 2026) \\
+University of St.\ Thomas
+
+\end{document}

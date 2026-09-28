@@ -1,0 +1,48 @@
+sequenceDiagram
+  autonumber
+  actor Admin
+  participant Form as ChallengeForm.jsx
+  participant API as data/api/challenges.js
+  participant SB as Supabase REST
+  participant DB as Postgres<br/>(RLS-enforced)
+
+  Admin->>Form: Click "New Challenge"
+  Form->>API: getCategories(), getGroups(), getTemplates()
+  par parallel reads
+    API->>SB: GET /categories
+    SB->>DB: SELECT * FROM categories
+    DB-->>SB: rows
+    SB-->>API: categories
+  and
+    API->>SB: GET /departments
+    SB->>DB: SELECT * FROM departments
+    DB-->>SB: rows
+    SB-->>API: groups
+  and
+    API->>SB: GET /templates
+    SB->>DB: SELECT * FROM templates
+    DB-->>SB: rows
+    SB-->>API: templates
+  end
+  API-->>Form: combined catalogs
+  Form-->>Admin: render form
+
+  Admin->>Form: Fill fields, pick colors, submit
+  Form->>Form: validate required fields
+  Form->>API: createChallenge(payload)
+  API->>SB: POST /challenges (anon key + JWT)
+  SB->>DB: INSERT with RLS check is_admin()
+  alt user is Admin or SuperAdmin
+    DB-->>SB: new challenge row
+    SB-->>API: { id, ... }
+    API->>SB: POST /activity_logs
+    SB->>DB: INSERT (any authenticated allowed)
+    DB-->>SB: ok
+    API-->>Form: new challenge
+    Form-->>Admin: navigate to /challenges
+  else not authorized
+    DB-->>SB: 401 RLS denied
+    SB-->>API: error
+    API-->>Form: throw
+    Form-->>Admin: show error banner
+  end
