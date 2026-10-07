@@ -1,0 +1,1 @@
+// Tailwind + Lucide (replaces legacy Sidebar.jsx)
