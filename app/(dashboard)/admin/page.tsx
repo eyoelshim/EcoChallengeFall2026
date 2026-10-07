@@ -84,7 +84,9 @@ export default async function AdminPage() {
       where: { name: { in: DEMO_CHALLENGES } },
       select: { name: true },
     });
-    const existingNames = new Set(existing.map((challenge) => challenge.name));
+    const existingNames = new Set(
+      existing.map((challenge: { name: string }) => challenge.name),
+    );
 
     for (const name of DEMO_CHALLENGES) {
       if (!existingNames.has(name)) {
