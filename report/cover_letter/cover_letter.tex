@@ -1,0 +1,59 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{parskip}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=false,
+    hidelinks
+}
+
+\begin{document}
+
+\begin{flushright}
+May 21, 2026
+\end{flushright}
+
+\noindent
+To Kristin Mroz-Risse and Future Student Teams or Implementers:
+
+\medskip
+
+\noindent
+We are pleased to submit GreenStep Employee, a web-based sustainability challenge platform developed during CISC480 Senior Capstone in Spring 2026 under the guidance of Professor Priscilla Jimenez. This project was designed to replace manual spreadsheet-based participation tracking with a simpler, more engaging system for workplace sustainability programs. The intended users are employees participating in sustainability challenges, administrators who manage those challenges, and future student teams or technical maintainers who may continue development. Our final deliverable addresses the partner's core need for a lightweight, low-maintenance system where users can log sustainable actions, earn points, join teams, view challenge-specific and global leaderboards, and export participation data in a more organized and reusable format.
+
+\medskip
+
+\noindent
+At the end of this semester, GreenStep Employee supports user authentication through Clerk, data persistence with Neon PostgreSQL through Prisma, and deployment through a single Next.js application architecture that is straightforward to host and maintain. The current system includes a protected dashboard, challenge joining, team participation, action logging across sustainability categories, challenge and global activity views, badge and points-based gamification, category filtering, exports, and an admin workspace for reviewing team requests and configuring challenges. Together, these features provide a practical foundation for running sustainability campaigns such as Earth Month while keeping the technical footprint small enough for a student-built and budget-conscious deployment.
+
+\medskip
+
+\noindent
+We also want to be transparent about the current constraints and limitations of the system. GreenStep Employee is functional, but it is still an academic capstone deliverable rather than a fully hardened production platform. The application relies on self-reported actions, so validation of user submissions is intentionally lightweight. Some features remain oriented toward demo and pilot use, including seeded sample data, limited administrative workflows, and interface behaviors that may need further polish for larger organizations or heavier usage. Additional work is also needed around stronger automated testing, deeper analytics, more robust role management, richer error recovery, and long-term operational practices such as formal monitoring, audit logging, and data governance. In short, the platform is well positioned as a strong pilot system, but there is remaining work before it should be considered fully mature for broad enterprise rollout.
+
+\medskip
+
+\noindent
+For future teams or implementers, we recommend building on the current modular monolith architecture rather than replacing it. The existing stack---Next.js, Clerk, Prisma, and Neon---keeps the project easy to reason about and fast to extend. The most valuable next steps would be to strengthen account synchronization and user lifecycle management, improve challenge administration workflows, expand reporting and analytics, and add more formal test coverage for the dashboard, API routes, and database interactions. Future teams should also review how global activity, challenge-specific views, teams, and admin functions interact before making schema changes, since those areas are tightly connected in both the user experience and the data model. If the project scales, careful attention should be paid to access control, database constraints, onboarding flows, and preserving a clean separation between end-user features and administrative operations.
+
+\medskip
+
+\noindent
+Finally, we would like to sincerely thank our community partner for their time, guidance, feedback, and collaboration throughout the semester. Their input helped keep the project grounded in a real organizational need and shaped the features that mattered most. We also hope this letter helps future student teams understand not only what was built, but how they can confidently continue the work. GreenStep Employee was created to be useful now and extendable later, and we are grateful for the opportunity to contribute that foundation.
+
+\medskip
+
+\noindent
+Sincerely,
+
+\medskip
+
+\noindent
+Hadi Shaar\\
+Naisha Srivastav\\
+Oli Gurmessa\\
+Nathanael Agbemadon\\
+CISC480 Senior Capstone Team
+
+\end{document}

@@ -1,0 +1,307 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{parskip}
+\usepackage{booktabs}
+\usepackage{array}
+
+\hypersetup{
+    colorlinks=false,
+    hidelinks
+}
+
+% Renders an app screenshot if present in report/figures/, otherwise a
+% labelled placeholder so the document always compiles.
+\newcommand{\appshot}[3]{%
+  \begin{figure}[H]
+    \centering
+    \IfFileExists{figures/#1}{%
+      \includegraphics[width=0.82\textwidth,height=0.5\textheight,keepaspectratio]{figures/#1}%
+    }{%
+      \fbox{\parbox[c][4.5cm][c]{0.82\textwidth}{\centering\itshape
+        [\,Screenshot placeholder\,]\\[6pt]
+        Add \texttt{report/figures/#1} to display this figure.}}%
+    }
+    \caption{#2}
+    \label{#3}
+  \end{figure}%
+}
+
+\title{\textbf{GreenStep Employee Sustainability Challenge}\\[0.4em]
+\large Project Report}
+\author{Oli Gurmessa \and Hadi Shaar \and Naisha Srivastav \and Nathanael Agbemadon}
+\date{CISC480 --- Senior Capstone\\[0.3em]
+Instructor: Dr.\ Jimenez \quad\textbullet\quad Spring 2026\\[0.3em]
+Submitted: May 22, 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Project Overview}
+% ─────────────────────────────────────────────────────────────────────────────
+
+GreenStep Employee is a gamified, team-based web application that replaces
+manual, spreadsheet-based sustainability tracking with a fast digital
+platform. It was built as a CISC480 Senior Capstone project for the community
+partner Minnesota GreenStep, and extends prior human-centred design work
+produced by a CISC489 team~\cite{cisc489}.
+
+\subsection{Problem}
+
+Workplace sustainability challenges (such as Earth Month) are commonly tracked
+with shared spreadsheets. Employees record their actions in a grid, and an
+organizer manually tallies the results at the end of the period. This approach
+suffers from ``spreadsheet fatigue'': data entry is tedious, there is no
+real-time feedback, engagement drops over the course of the challenge, and
+administrators find it difficult to aggregate and report on participation.
+
+\subsection{Purpose}
+
+The purpose of GreenStep is to replace the spreadsheet with a low-friction,
+gamified digital tracker. By giving employees immediate feedback---points,
+badges, streaks, and live leaderboards---the platform aims to sustain
+engagement throughout a challenge while making aggregation and reporting
+effortless for administrators.
+
+\subsection{Users}
+
+The system targets two primary user groups, consistent with the personas
+defined in the prior CISC489 design work~\cite{cisc489}:
+
+\begin{itemize}
+    \item \textbf{Employees} (e.g.\ the ``Maria'' and ``Sarah'' personas) ---
+    everyday participants who log sustainable actions, build streaks, and
+    compete on team and individual leaderboards.
+    \item \textbf{Sustainability administrators} (e.g.\ the ``David'' persona)
+    --- organizers who create challenges, review and approve team requests,
+    and export participation data for reporting.
+\end{itemize}
+
+Division or department leaders are a secondary audience, served indirectly
+through team-based leaderboards that group participants by team.
+
+\subsection{Constraints}
+
+The project operated under several constraints that shaped its design:
+
+\begin{itemize}
+    \item \textbf{Zero budget} --- all infrastructure runs on free service
+    tiers (Vercel, Neon, Clerk).
+    \item \textbf{One semester} --- a fixed, short development timeline.
+    \item \textbf{Four-person team} --- limited engineering capacity.
+    \item \textbf{Self-reported data} --- actions are not independently
+    verified, by partner agreement.
+    \item \textbf{No dedicated DevOps} --- the solution must be low-maintenance
+    and require no ongoing operational staffing.
+\end{itemize}
+
+\subsection{Proposed Solution}
+
+GreenStep is a single team-based web application in which employees log
+actions to earn points, badges, and streaks; compete on team and individual
+leaderboards; and participate in one or more challenges. Administrators create
+challenges, approve team-creation requests, and export participation data as
+CSV. The entire system is delivered as one deployable unit, requiring no
+installation by end users.
+
+\subsection{Technology}
+
+The application is built on a modern, type-safe web stack:
+
+\begin{itemize}
+    \item \textbf{Next.js 15} (App Router) with \textbf{TypeScript} for both
+    the user interface and the API routes~\cite{nextjs}.
+    \item \textbf{Tailwind CSS} for styling~\cite{tailwind}.
+    \item \textbf{Clerk} for authentication and session
+    management~\cite{clerk}.
+    \item \textbf{Prisma} as the ORM~\cite{prisma}, backed by
+    \textbf{Neon} serverless PostgreSQL~\cite{neon}.
+    \item \textbf{Recharts} for the performance chart~\cite{recharts}.
+    \item \textbf{Vercel} for hosting and continuous deployment.
+\end{itemize}
+
+\subsection{Expected Benefits}
+
+Relative to the spreadsheet workflow it replaces, GreenStep is expected to
+deliver faster action logging, gamified engagement that sustains
+participation, live leaderboards that create healthy competition, one-click
+administrative CSV export, and very low maintenance overhead thanks to its
+fully managed, serverless infrastructure.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Current Functionality \& Features}
+% ─────────────────────────────────────────────────────────────────────────────
+
+This section describes the features that are implemented and working in the
+current build. Each major screen is shown as a captioned screenshot.
+
+\subsection{Authentication and Onboarding}
+
+Authentication is handled by Clerk. New users sign up, sign in, and complete a
+first-run onboarding flow that records their department and enrolls them in the
+default ``global'' challenge. The landing page (Figure~\ref{fig:landing})
+introduces the product and routes signed-in users straight to their dashboard.
+
+\appshot{screenshot-landing.png}{The GreenStep landing page, introducing the
+product and providing the sign-in entry point.}{fig:landing}
+
+\subsection{Action Logging}
+
+Authenticated users log sustainable actions across five categories
+---Transport, Water, Energy, Recycling, and Food. Each action carries a point
+value, and users may optionally attach a note or a photo for a small bonus.
+Users browse and search a catalog of pre-defined actions
+(Figure~\ref{fig:logaction}) and then confirm a specific action on its own
+page.
+
+\appshot{screenshot-log-action.png}{The action-logging screen, where users
+browse the five categories and select a specific action to log.}{fig:logaction}
+
+\subsection{Dashboard, Streaks, and Badges}
+
+The dashboard (Figure~\ref{fig:dashboard}) is the home screen. It shows the
+user's level and progress, current streak, recent personal activity, a
+community activity feed, and a performance chart comparing the user against the
+group average (rendered with Recharts). Daily engagement builds a
+\textbf{streak}, and users earn \textbf{badges} for milestones such as their
+first action, point thresholds, category-specific counts, and streak lengths.
+
+\appshot{screenshot-dashboard.png}{The main dashboard showing level progress,
+streak, recent activity, and the performance chart.}{fig:dashboard}
+
+\subsection{Teams and Admin Approval}
+
+Within a challenge, users join existing teams or submit a request to create a
+new team. Team-creation requests enter a \texttt{PENDING} state and must be
+approved (or rejected) by an administrator, giving organizers governance over
+team structure.
+
+\subsection{Leaderboards}
+
+GreenStep provides both \textbf{team} and \textbf{individual} leaderboards
+(Figure~\ref{fig:leaderboard}). Individual rankings offer several views
+---all-time points, rising performers, longest streaks, and category
+diversity---and both leaderboards can be filtered by category and time range.
+
+\appshot{screenshot-leaderboard.png}{The leaderboard screen, showing team and
+individual rankings with category and time-range filters.}{fig:leaderboard}
+
+\subsection{Challenges and Join-by-Code}
+
+Every user is auto-enrolled in a permanent global challenge and may join
+additional challenges using a unique join code. The active challenge scopes
+the dashboard, leaderboards, and activity feeds, and users can switch between
+challenges they belong to.
+
+\subsection{Administrator Tools}
+
+Administrators---identified by a Clerk \texttt{publicMetadata} role---have
+access to an admin screen (Figure~\ref{fig:admin}) for creating challenges,
+reviewing and approving team requests, and exporting participation data to a
+CSV file for external reporting.
+
+\appshot{screenshot-admin.png}{The administrator screen for creating
+challenges, reviewing team requests, and exporting CSV data.}{fig:admin}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{To-Do List \& Future Enhancements}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The following items were out of scope for this semester or surfaced during
+development. They are grouped by aspect.
+
+\subsection{Technical}
+
+\begin{itemize}
+    \item \textbf{Automated testing.} The project currently relies on manual
+    testing. Adding unit and end-to-end tests (e.g.\ for authentication, action
+    logging, and leaderboard aggregation) and wiring them into CI would catch
+    regressions automatically.
+    \item \textbf{Further dashboard decomposition.} The main
+    \texttt{DashboardClient.tsx} component was recently reduced (from roughly
+    2,300 to about 2,080 lines) by extracting its types, helpers, and the
+    \texttt{useCountUp} hook into separate modules. The next step is to split
+    it into per-tab components (Home, Leaderboard, Activity, Teams).
+    \item \textbf{Database migrations.} The schema is currently applied with
+    \texttt{prisma db push}. Moving to versioned \texttt{prisma migrate}
+    migrations would provide a reproducible schema history for production.
+\end{itemize}
+
+\subsection{Functional}
+
+\begin{itemize}
+    \item \textbf{Undo / edit a logged action.} Users cannot currently correct
+    or remove an action after logging it.
+    \item \textbf{Richer admin dashboard.} Expand the admin tools with
+    participation analytics and per-team summaries.
+    \item \textbf{Real challenge scheduling.} Honor the \texttt{startDate} and
+    \texttt{endDate} fields to open and close challenges automatically.
+    \item \textbf{User-selectable action dates.} Allow back-dating an action;
+    actions are currently timestamped automatically.
+\end{itemize}
+
+\subsection{Usability}
+
+\begin{itemize}
+    \item \textbf{Reminders and notifications.} Nudge users to maintain their
+    streaks and re-engage lapsed participants.
+    \item \textbf{Accessibility audit.} Conduct a formal review against WCAG
+    guidelines (keyboard navigation, color contrast, screen-reader labels).
+    \item \textbf{Environmental-impact feedback.} Show simple, category-based
+    impact facts when an action is logged.
+\end{itemize}
+
+\subsection{Future Expansion}
+
+\begin{itemize}
+    \item \textbf{Email digests.} Periodic summaries of team standings and
+    personal progress.
+    \item \textbf{Deeper analytics.} Trend analysis and reporting for
+    organizers across challenges.
+    \item \textbf{Multi-organization scaling.} Offer GreenStep as a
+    multi-tenant service so other organizations can run their own challenges.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{thebibliography}{9}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\bibitem{nextjs}
+Vercel, ``Next.js Documentation,'' 2024. [Online]. Available:
+\url{https://nextjs.org/docs}
+
+\bibitem{clerk}
+Clerk, ``Clerk Documentation,'' 2024. [Online]. Available:
+\url{https://clerk.com/docs}
+
+\bibitem{prisma}
+Prisma, ``Prisma ORM Documentation,'' 2024. [Online]. Available:
+\url{https://www.prisma.io/docs}
+
+\bibitem{tailwind}
+Tailwind Labs, ``Tailwind CSS Documentation,'' 2024. [Online]. Available:
+\url{https://tailwindcss.com/docs}
+
+\bibitem{recharts}
+Recharts, ``Recharts Documentation,'' 2024. [Online]. Available:
+\url{https://recharts.org/}
+
+\bibitem{neon}
+Neon, ``Neon Serverless Postgres Documentation,'' 2024. [Online]. Available:
+\url{https://neon.tech/docs}
+
+\bibitem{cisc489}
+E. Adekoya, K. Alkhaleefa, and J. Dunlap, ``Employee Sustainability Challenge
+App: Final Project Documentation,'' CISC489 Topics in Human-Computer
+Interaction, University of St.\ Thomas, Dec.\ 2025.
+
+\end{thebibliography}
+
+\end{document}

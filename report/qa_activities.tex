@@ -1,0 +1,262 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.85in]{geometry}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{parskip}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+
+\hypersetup{colorlinks=false, hidelinks}
+\setlength{\parskip}{3pt plus 1pt}
+\captionsetup{font=small, skip=3pt, labelfont=bf}
+
+\title{\textbf{GreenStep Employee Sustainability Challenge}\\[0.4em]
+\large QA Activities Document}
+\author{Oli Gurmessa \and Hadi Shaar \and Naisha Srivastav \and Nathanael Agbemadon}
+\date{CISC480 --- Senior Capstone\\[0.3em]
+Instructor: Dr.\ Jimenez \quad\textbullet\quad Spring 2026\\[0.3em]
+Submitted: May 22, 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Test Plan}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Scope}
+
+This plan covers functional testing of the GreenStep Employee web application:
+authentication and route protection, onboarding, action logging (including
+note/photo bonus points and the duplicate-submission guard), streaks, the
+team-request and admin-approval workflow, leaderboards (team and individual,
+with tie handling and category/time filters), administrative tools (challenge
+creation, join-by-code, CSV export, admin-only access), and the error/404
+pages. Performance, load, and security penetration testing are out of scope
+for this phase.
+
+\subsection{Test Environment}
+
+\begin{itemize}
+    \item \textbf{Application:} Next.js~15 build, run both locally
+    (\texttt{npm run dev} at \texttt{localhost:3000}) and on the deployed
+    Vercel instance.
+    \item \textbf{Browsers:} Desktop Chrome and mobile-width viewport (the UI
+    is mobile-first).
+    \item \textbf{Auth:} Clerk test instance; an admin account with
+    \texttt{publicMetadata.role = "admin"} and one or more standard accounts.
+    \item \textbf{Database:} Neon PostgreSQL (development branch), inspected
+    with Prisma Studio (\texttt{npm run db:studio}); seed scripts under
+    \texttt{scripts/} provide demo data.
+\end{itemize}
+
+\subsection{Approach and Responsibilities}
+
+Testing was \textbf{manual}, exploratory plus the scripted cases in
+Table~\ref{tab:tc}, executed against two or more accounts to exercise
+multi-user flows (teams, leaderboards). Hadi led test execution and the final
+end-to-end pass; each team member tested the features they implemented, and
+defects were recorded as GitHub issues and fixed on feature branches. Pass/Fail
+reflects the current build; fixed defects are listed in
+Table~\ref{tab:defects} with their commit references.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Test Cases}
+% ─────────────────────────────────────────────────────────────────────────────
+
+{\footnotesize
+\begin{longtable}{p{0.7cm} p{1.9cm} p{2.2cm} p{3.7cm} p{3.0cm} p{1.9cm} p{0.8cm}}
+\caption{Functional test cases for the core flows.}\label{tab:tc}\\
+\toprule
+\textbf{ID} & \textbf{Feature} & \textbf{Preconditions} & \textbf{Steps} &
+\textbf{Expected} & \textbf{Actual} & \textbf{P/F} \\
+\midrule
+\endfirsthead
+\multicolumn{7}{l}{\footnotesize\itshape Table~\ref{tab:tc} continued}\\
+\toprule
+\textbf{ID} & \textbf{Feature} & \textbf{Preconditions} & \textbf{Steps} &
+\textbf{Expected} & \textbf{Actual} & \textbf{P/F} \\
+\midrule
+\endhead
+\midrule \multicolumn{7}{r}{\footnotesize\itshape continued on next page}\\
+\endfoot
+\bottomrule
+\endlastfoot
+
+TC-01 & Sign-up / sign-in & No session & Visit \texttt{/sign-up}, create
+account; sign out; sign in & Account created; redirected to
+\texttt{/dashboard} & As expected & Pass \\
+\addlinespace
+TC-02 & Route protection & No session & Request \texttt{/dashboard} directly &
+Middleware redirects to \texttt{/sign-in} & Redirected & Pass \\
+\addlinespace
+TC-03 & Onboarding & New user, first login & Complete onboarding (department)
+& \texttt{onboarded=true}; lands on dashboard & As expected & Pass \\
+\addlinespace
+TC-04 & Log action & Signed in & Log ``Biked to work'' & Points added; appears
+in recent activity & As expected & Pass \\
+\addlinespace
+TC-05 & Note/photo bonus & Signed in & Log an action with a note and a photo &
+Base points \texttt{+10} (note) \texttt{+15} (photo) & Bonus applied & Pass \\
+\addlinespace
+TC-06 & Duplicate guard & Signed in & Submit the same action twice within
+10\,s & First logs; second returns \texttt{409}; only one record & One record;
+409 on retry & Pass \\
+\addlinespace
+TC-07 & Streak increment & Logged yesterday & Log an action today & Streak
+\texttt{= previous + 1} & Incremented & Pass \\
+\addlinespace
+TC-08 & Streak gap-reset & Last action $\geq$ 2 days ago (seeded) & Log an
+action today & Streak resets to \texttt{1} & Reset to 1 & Pass \\
+\addlinespace
+TC-09 & Team request & In a challenge, no team & Submit a team request & Request
+saved \texttt{PENDING}; shown to admin & As expected & Pass \\
+\addlinespace
+TC-10 & Approve request & Admin; a PENDING request & Approve it & Team +
+TeamMember created; status \texttt{APPROVED} & As expected & Pass \\
+\addlinespace
+TC-11 & Reject request & Admin; a PENDING request & Reject it & Status
+\texttt{REJECTED}; no team created & As expected & Pass \\
+\addlinespace
+TC-12 & Leaderboard (team) & $\geq$2 teams, some tied & Open Leaderboard, Team
+tab & Teams ranked desc; tied teams share a rank & Ties grouped & Pass \\
+\addlinespace
+TC-13 & Leaderboard (individual) & Several users with actions & Switch
+all-time / rising / streak / diverse; apply category + time filters & Each view
+ranks correctly; filters scope results & As expected & Pass \\
+\addlinespace
+TC-14 & Create challenge & Admin & Create a challenge & Saved with a unique
+6-char code; creator auto-joined & As expected & Pass \\
+\addlinespace
+TC-15 & Join by code & Standard user & Enter a valid code; then an invalid
+code & Valid joins; invalid/expired rejected with message & As expected &
+Pass \\
+\addlinespace
+TC-16 & CSV export & Admin & Export participation CSV & CSV downloads with
+participation rows & File downloaded & Pass \\
+\addlinespace
+TC-17 & Admin-only access & Standard (non-admin) user & Attempt an admin action
+(create challenge) & Blocked --- \texttt{Forbidden} (server action throws) &
+Blocked & Pass \\
+\addlinespace
+TC-18 & Error / 404 & --- & Visit an unknown route; trigger a server error &
+\texttt{not-found} / \texttt{error} page renders gracefully & As expected &
+Pass \\
+
+\end{longtable}
+}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Defect Reports}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Table~\ref{tab:defects} lists defects found during development. Fixed defects
+cite the commit that resolved them; the final entries are known limitations
+tracked as open defects.
+
+{\footnotesize
+\begin{longtable}{p{0.8cm} p{4.0cm} p{1.5cm} p{4.6cm} p{2.6cm}}
+\caption{Defect reports (fixed and open).}\label{tab:defects}\\
+\toprule
+\textbf{ID} & \textbf{Description} & \textbf{Severity} & \textbf{Steps to
+reproduce} & \textbf{Status} \\
+\midrule
+\endfirsthead
+\multicolumn{5}{l}{\footnotesize\itshape Table~\ref{tab:defects} continued}\\
+\toprule
+\textbf{ID} & \textbf{Description} & \textbf{Severity} & \textbf{Steps to
+reproduce} & \textbf{Status} \\
+\midrule
+\endhead
+\midrule \multicolumn{5}{r}{\footnotesize\itshape continued on next page}\\
+\endfoot
+\bottomrule
+\endlastfoot
+
+D-01 & Clerk users synced twice, creating duplicate User rows & Med &
+Sign in repeatedly; observe duplicate users in DB & Fixed (\texttt{b8d0f1a}) \\
+\addlinespace
+D-02 & Dashboard crash from Prisma client / schema mismatch & High &
+Load \texttt{/dashboard} after a schema change without regenerating the client
+& Fixed (\texttt{3ce2d8a}, \texttt{8b7be7a}) \\
+\addlinespace
+D-03 & Leaderboard crash when a user/team had no related record (null) & High &
+Open leaderboard with a user not on a team & Fixed (\texttt{87caf66}) \\
+\addlinespace
+D-04 & Onboarding action strings did not match the catalog & Med &
+Complete onboarding; selected actions mismatched & Fixed (\texttt{87caf66}) \\
+\addlinespace
+D-05 & Clerk authentication redirect loop on dashboard & High &
+Sign in with mismatched Clerk env keys & Fixed (\texttt{74ae5c9}) \\
+\addlinespace
+D-06 & Duplicate action logs from rapid repeat clicks & Med &
+Tap ``log'' multiple times quickly & Fixed (\texttt{1a48b02}; 10\,s
+serializable guard) \\
+\addlinespace
+D-07 & Tied leaderboard scores not sharing a rank & Low &
+Two teams/users with equal points ranked sequentially & Fixed
+(\texttt{5db57ba}; dense rank) \\
+\addlinespace
+D-08 & ``All Activity'' dashboard totals computed incorrectly & Med &
+Switch to All-Activity view; totals wrong & Fixed (\texttt{f21e3fe}) \\
+\addlinespace
+D-09 & Duplicate ``GreenStep'' option in the challenge selector & Low &
+Open challenge dropdown; global listed twice & Fixed (\texttt{176e43b}) \\
+\addlinespace
+D-10 & Challenge isolation / scoped-export logical gaps & Med &
+View badges/rank/exports across challenges & Fixed (\texttt{28c382c}) \\
+\addlinespace
+D-11 & No edit or undo of a logged action & Med &
+Log an action; attempt to edit/remove it & Open (planned) \\
+\addlinespace
+D-12 & Actions are self-reported (honor system, no verification) & Low &
+Log any action without proof & Open (by design) \\
+\addlinespace
+D-13 & Large \texttt{DashboardClient.tsx} component (\textasciitilde 2{,}080
+lines, reduced from \textasciitilde 2{,}300) & Low &
+Review the dashboard component size & Open (refactor planned: per-tab
+components) \\
+
+\end{longtable}
+}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Known Limitations}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Defects \texttt{D-11}--\texttt{D-13} above are the project's known limitations,
+recorded as open defects for transparency: there is no edit/undo of a logged
+action; action data is self-reported on an honor-system basis with no
+verification; and the main dashboard component remains large and is slated for
+decomposition into per-tab components. These are also reflected in the
+To-Do / Future Enhancements section of the Project Report.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{thebibliography}{9}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\bibitem{istqb}
+ISTQB, ``Standard Glossary of Terms used in Software Testing,'' v3.2,
+International Software Testing Qualifications Board, 2023.
+
+\bibitem{nextjs}
+Vercel, ``Next.js Documentation,'' 2024. [Online]. Available:
+\url{https://nextjs.org/docs}
+
+\bibitem{clerk}
+Clerk, ``Clerk Documentation,'' 2024. [Online]. Available:
+\url{https://clerk.com/docs}
+
+\bibitem{prisma}
+Prisma, ``Prisma ORM Documentation,'' 2024. [Online]. Available:
+\url{https://www.prisma.io/docs}
+
+\end{thebibliography}
+
+\end{document}

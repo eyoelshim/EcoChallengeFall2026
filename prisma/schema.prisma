@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(cuid())
+  clerkId        String          @unique
+  name           String
+  email          String          @unique
+  department     String?
+  onboarded      Boolean         @default(false)
+  streak         Int             @default(0)
+  lastActionDate DateTime?
+  challenges     UserChallenge[]
+  teams          TeamMember[]
+  actions        Action[]
+  teamRequests   TeamRequest[]   @relation("RequestedBy")
+  reviewedRequests TeamRequest[] @relation("ReviewedBy")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model Challenge {
+  id          String          @id @default(cuid())
+  name        String
+  code        String          @unique
+  startDate   DateTime?
+  endDate     DateTime?
+  users       UserChallenge[]
+  teams       Team[]
+  actions     Action[]
+  teamRequests TeamRequest[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model UserChallenge {
+  id          String    @id @default(cuid())
+  userId      String
+  challengeId String
+  user        User      @relation(fields: [userId], references: [id])
+  challenge   Challenge @relation(fields: [challengeId], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, challengeId])
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  name        String       // Removed @unique since teams might have same name across challenges
+  challengeId String?
+  challenge   Challenge?   @relation(fields: [challengeId], references: [id])
+  members     TeamMember[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model TeamMember {
+  id       String   @id @default(cuid())
+  userId   String
+  teamId   String
+  user     User     @relation(fields: [userId], references: [id])
+  team     Team     @relation(fields: [teamId], references: [id])
+  joinedAt DateTime @default(now())
+
+  @@unique([userId, teamId])
+}
+
+model Action {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  challengeId String?
+  challenge   Challenge?     @relation(fields: [challengeId], references: [id])
+  category    ActionCategory
+  actionType  String
+  points      Int            @default(0)
+  note        String?
+  imageUrl    String?        @db.Text
+  date        DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+}
+
+model TeamRequest {
+  id            String            @id @default(cuid())
+  name          String
+  message       String?
+  status        TeamRequestStatus @default(PENDING)
+  challengeId   String
+  requestedById String
+  reviewedById  String?
+  reviewedAt    DateTime?
+  challenge     Challenge         @relation(fields: [challengeId], references: [id])
+  requestedBy   User              @relation("RequestedBy", fields: [requestedById], references: [id])
+  reviewedBy    User?             @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([challengeId, status])
+}
+
+enum ActionCategory {
+  TRANSPORT
+  WATER
+  ENERGY
+  RECYCLING
+  FOOD
+}
+
+enum TeamRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}

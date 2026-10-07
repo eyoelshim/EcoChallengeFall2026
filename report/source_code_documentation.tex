@@ -1,0 +1,305 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.9in]{geometry}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{parskip}
+\usepackage{booktabs}
+\usepackage{array}
+
+\hypersetup{colorlinks=false, hidelinks}
+\setlength{\parskip}{3pt plus 1pt}
+\captionsetup{font=small, skip=3pt, labelfont=bf}
+
+\title{\textbf{GreenStep Employee Sustainability Challenge}\\[0.4em]
+\large Source Code Documentation}
+\author{Oli Gurmessa \and Hadi Shaar \and Naisha Srivastav \and Nathanael Agbemadon}
+\date{CISC480 --- Senior Capstone\\[0.3em]
+Instructor: Dr.\ Jimenez \quad\textbullet\quad Spring 2026\\[0.3em]
+Submitted: May 22, 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Overview and Tooling}
+% ─────────────────────────────────────────────────────────────────────────────
+
+This document describes the code-construction guidelines for the GreenStep
+codebase: project structure, naming, imports, the server/client component
+model, the API route pattern, commenting, formatting, and version-control
+practice. The conventions follow the Google TypeScript Style Guide~\cite{gts}
+adapted to a Next.js~15 + TypeScript project. Every example below cites a real
+file in the repository so the rule is traceable to the code.
+
+Two tools enforce quality, and both must pass before a pull request is merged:
+
+\begin{itemize}
+    \item \textbf{Prettier}~\cite{prettier} for formatting, configured by
+    \texttt{.prettierrc} at the repository root.
+    \item \textbf{ESLint}~\cite{eslint} for linting, configured by
+    \texttt{eslint.config.mjs} (the Next.js flat-config preset
+    \texttt{next/core-web-vitals} + \texttt{next/typescript}), run via
+    \texttt{npm run lint}.
+\end{itemize}
+
+The continuous-integration gate is \texttt{npm run build} and
+\texttt{npm run lint}. Automated tests are not yet configured for the project;
+test plans and cases are maintained in the QA Activities document and listed
+as future work in the Project Report.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Project / Folder Structure}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The repository follows the Next.js App Router layout:
+
+\begin{table}[H]
+\centering
+\caption{Top-level source directories and their responsibilities.}
+\label{tab:struct}
+\begin{tabular}{p{3.6cm} p{9.6cm}}
+\toprule
+Path & Responsibility \\
+\midrule
+\texttt{app/} & Routed pages and layouts (Presentation). Route groups
+\texttt{(auth)/} and \texttt{(dashboard)/} organize related screens. \\
+\texttt{app/api/} & Server-side API route handlers (\texttt{route.ts} files). \\
+\texttt{app/actions/} & Server actions (e.g.\ \texttt{challenge.ts}). \\
+\texttt{lib/} & Framework-agnostic helpers: \texttt{db.ts} (Prisma singleton),
+\texttt{authz.ts}, \texttt{constants.ts}, \texttt{global-challenge.ts},
+\texttt{team-requests.ts}, \texttt{actions-data.ts}. \\
+\texttt{components/} & Shared, reusable UI components imported across
+pages. \\
+\texttt{prisma/} & \texttt{schema.prisma} --- the database schema. \\
+\texttt{scripts/} & Developer seed scripts (\texttt{seed-*.js}). \\
+\texttt{middleware.ts} & Clerk route protection (root). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Naming Conventions}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{table}[H]
+\centering
+\caption{Naming conventions with a real example from the codebase.}
+\label{tab:naming}
+\begin{tabular}{p{3.0cm} p{4.4cm} p{5.6cm}}
+\toprule
+Case & Used for & Example (file) \\
+\midrule
+\texttt{PascalCase} & Components, types, interfaces &
+\texttt{Home} in \texttt{app/page.tsx} \\
+\texttt{camelCase} & Functions, variables, params &
+\texttt{createTeamRequest}, \texttt{reviewTeamRequest} in
+\texttt{lib/team-requests.ts} \\
+\texttt{UPPER\_CASE} & Module constants &
+\texttt{GLOBAL\_CHALLENGE\_ID} in \texttt{lib/constants.ts} \\
+\texttt{kebab-case} & Route folders &
+\texttt{app/(dashboard)/log-action/}, \texttt{app/api/team/request/} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A component file is named after its main export (e.g.\
+\texttt{DashboardClient.tsx} exports \texttt{DashboardClient}). Vague names
+such as \texttt{utils.ts} are avoided in favor of scoped names
+(\texttt{team-requests.ts}, \texttt{global-challenge.ts}).
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Imports and Module Conventions}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The project uses the \texttt{@/} path alias, configured in
+\texttt{tsconfig.json} as \texttt{"@/*": ["./*"]}, so modules are imported by
+absolute path rather than long relative chains.
+
+Database access goes through a single Prisma client singleton in
+\texttt{lib/db.ts}, imported everywhere as \texttt{db}:
+
+\begin{verbatim}
+// lib/db.ts
+export const db =
+  globalForPrisma.prisma ??
+  new PrismaClient({ log: [...] });
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+
+// usage in any route or lib module:
+import { db } from "@/lib/db";
+\end{verbatim}
+
+The singleton prevents exhausting database connections during development
+hot-reload.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Server vs.\ Client Components}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Components are \textbf{server components by default}. Data fetching, auth, and
+Prisma access happen on the server; for example,
+\texttt{app/(dashboard)/dashboard/page.tsx} authenticates and syncs the user
+before rendering.
+
+A component that needs browser APIs, state, or event handlers opts in with the
+\texttt{"use client"} directive on its first line --- for example,
+\texttt{app/(dashboard)/dashboard/DashboardClient.tsx}:
+
+\begin{verbatim}
+"use client";
+import { useState, useEffect } from "react";
+// ... interactive dashboard
+\end{verbatim}
+
+Server-only mutations are written as \textbf{server actions} with the
+\texttt{"use server"} directive, e.g.\ \texttt{app/actions/challenge.ts}
+(\texttt{createChallenge}, \texttt{joinChallenge}).
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{API Route Pattern}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Every API route handler follows the same shape: a \texttt{try/catch} wrapping
+the logic, an authentication guard, input validation, and
+\texttt{NextResponse.json(...)} with an explicit HTTP status code. The pattern
+below is taken from \texttt{app/api/actions/route.ts}:
+
+\begin{verbatim}
+export async function POST(req: Request) {
+  try {
+    const { userId } = await auth();
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { category, actionType } = await req.json();
+    if (!category || !actionType)
+      return NextResponse.json(
+        { error: "category and actionType are required" },
+        { status: 400 });
+
+    const user = await db.user.findUnique({ where: { clerkId: userId } });
+    if (!user)
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    // ... perform work ...
+    return NextResponse.json({ ...action, streak: newStreak });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { error: "Failed to create action" }, { status: 500 });
+  }
+}
+\end{verbatim}
+
+Status codes are used consistently across handlers: \texttt{401} unauthorized,
+\texttt{400} bad input, \texttt{404} not found, \texttt{409} conflict (e.g.\
+the duplicate-action guard), and \texttt{500} for unexpected errors. The same
+shape appears in \texttt{app/api/leaderboard/route.ts} and
+\texttt{app/api/me/route.ts}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Commenting}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Exported functions and components are documented with JSDoc. For functions
+with parameters, a multi-line block documents each \texttt{@param}; the example
+below is from \texttt{app/(dashboard)/dashboard/useCountUp.ts}:
+
+\begin{verbatim}
+/**
+ * Animates a numeric value toward a target over a fixed duration.
+ * @param value The target value to count toward.
+ * @param duration Animation length in milliseconds (default 900).
+ * @returns The current animated value to render.
+ */
+export function useCountUp(value: number, duration = 900) { ... }
+\end{verbatim}
+
+Self-explanatory helpers use a single-line JSDoc (see
+\texttt{app/(dashboard)/dashboard/helpers.ts} and \texttt{useCountUp.ts}).
+Implementation notes use \texttt{//} line comments.
+
+\textbf{Aspirational rule --- file-level header JSDoc.} New modules begin with
+a file-level JSDoc header (\texttt{File}, \texttt{Author}, \texttt{Created},
+\texttt{Description}); this is present in newer files such as
+\texttt{lib/constants.ts} and the extracted dashboard modules
+(\texttt{types.ts}, \texttt{helpers.ts}, \texttt{useCountUp.ts}). It is a goal for new files rather than a property of
+every existing file, and is not retrofitted across the whole codebase.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Formatting (Prettier)}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Formatting is handled by Prettier, configured in \texttt{.prettierrc} at the
+repository root (Table~\ref{tab:prettier}).
+
+\begin{table}[H]
+\centering
+\caption{Prettier settings (\texttt{.prettierrc}).}
+\label{tab:prettier}
+\begin{tabular}{p{4.5cm} p{4.5cm}}
+\toprule
+Setting & Value \\
+\midrule
+\texttt{printWidth} & 80 \\
+\texttt{tabWidth} & 2 \\
+\texttt{semi} & true \\
+\texttt{singleQuote} / \texttt{jsxSingleQuote} & false (double quotes) \\
+\texttt{trailingComma} & es5 \\
+\texttt{bracketSpacing} & true \\
+\texttt{arrowParens} & avoid \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Version Control}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{itemize}
+    \item \textbf{Branches} are named \texttt{type/short-description}, e.g.\
+    \texttt{feature/leaderboard}, \texttt{fix/null-check-userid},
+    \texttt{chore/update-deps}.
+    \item \textbf{Commit messages} use the imperative mood and describe one
+    logical change (e.g.\ ``Add sign-in button''), following Conventional
+    Commits~\cite{cc}.
+    \item \textbf{Quality gate.} \texttt{npm run build} and
+    \texttt{npm run lint} must pass before a pull request is ready. (No
+    \texttt{test} script is defined yet; automated testing is tracked in the
+    QA Activities document.)
+    \item \textbf{No debugging artifacts} (stray \texttt{console.log} or
+    commented-out code) are committed.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{thebibliography}{9}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\bibitem{gts}
+Google, ``Google TypeScript Style Guide,'' 2024. [Online]. Available:
+\url{https://google.github.io/styleguide/tsguide.html}
+
+\bibitem{prettier}
+Prettier, ``Prettier Documentation,'' 2024. [Online]. Available:
+\url{https://prettier.io/docs/en/}
+
+\bibitem{eslint}
+ESLint, ``ESLint Documentation,'' 2024. [Online]. Available:
+\url{https://eslint.org/docs/latest/}
+
+\bibitem{nextjs}
+Vercel, ``Next.js Documentation,'' 2024. [Online]. Available:
+\url{https://nextjs.org/docs}
+
+\bibitem{cc}
+Conventional Commits, ``Conventional Commits v1.0.0,'' 2023. [Online].
+Available: \url{https://www.conventionalcommits.org/}
+
+\end{thebibliography}
+
+\end{document}

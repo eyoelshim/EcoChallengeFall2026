@@ -1,0 +1,414 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.9in]{geometry}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{parskip}
+\usepackage{booktabs}
+\usepackage{array}
+
+\hypersetup{colorlinks=false, hidelinks}
+
+% Compact layout: tighter paragraph gaps, small captions, denser headings.
+\setlength{\parskip}{3pt plus 1pt}
+\captionsetup{font=small, skip=3pt}
+\captionsetup{labelfont=bf}
+
+% Guarded diagram include: renders the PNG if present, else a labelled
+% placeholder, so the document always compiles.
+\newcommand{\dgram}[4]{%
+  \begin{figure}[htbp]
+    \centering
+    \IfFileExists{figures/#1}{%
+      \includegraphics[width=#2\textwidth,height=0.33\textheight,keepaspectratio]{figures/#1}%
+    }{%
+      \fbox{\parbox[c][3cm][c]{0.7\textwidth}{\centering\itshape
+        [\,Diagram placeholder\,]\\[6pt]Add \texttt{report/figures/#1}.}}%
+    }
+    \caption{#3}\label{#4}
+  \end{figure}%
+}
+
+\title{\textbf{GreenStep Employee Sustainability Challenge}\\[0.4em]
+\large Technical Design Document}
+\author{Oli Gurmessa \and Hadi Shaar \and Naisha Srivastav \and Nathanael Agbemadon}
+\date{CISC480 --- Senior Capstone\\[0.3em]
+Instructor: Dr.\ Jimenez \quad\textbullet\quad Spring 2026\\[0.3em]
+Submitted: May 22, 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{System Overview / Proposed Solution}
+% ─────────────────────────────────────────────────────────────────────────────
+
+GreenStep Employee is a web-based, gamified sustainability tracking platform
+designed for workplace use. Employees log sustainable actions across five
+categories---Transport, Water, Energy, Recycling, and Food---earning points,
+streaks, and badges that contribute to team and individual leaderboards. The
+platform replaces manual Excel-based tracking with a real-time, low-friction
+digital system.
+
+The solution is delivered as a single web application accessible from any
+browser. It requires no installation and is hosted on Vercel's free tier,
+keeping it viable within the project's zero-budget constraint. Participation is
+organized into \emph{challenges}: every user is auto-enrolled in a permanent
+global challenge and may join additional, code-gated challenges.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Architecture Pattern}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Pattern: Modular Monolith (Layered)}
+
+The system follows a \textbf{Modular Monolith} pattern organized into three
+logical layers---Presentation, Application, and Data---all deployed as a single
+Next.js~15 application (Figure~\ref{fig:arch}). The \textbf{Application layer}
+is not a separate server: it comprises the Next.js \emph{API route handlers},
+\emph{server actions} (\texttt{app/actions/challenge.ts}), and the
+\emph{Clerk middleware} that authenticates every non-public request before it
+reaches a route.
+
+\dgram{arch_pattern.png}{0.95}{Modular-monolith layered architecture.
+Presentation (React pages) calls the Application layer (API routes, server
+actions, Clerk middleware), which calls the Data layer (Prisma ORM over Neon
+PostgreSQL). Clerk is a cross-cutting external dependency that validates every
+request.}{fig:arch}
+
+\subsection{Design Decisions and Justifications}
+
+Table~\ref{tab:just} links each major decision to a project requirement or
+constraint.
+
+\begin{table}[H]
+\centering
+\caption{Design decisions and their justifications.}
+\label{tab:just}
+\begin{tabular}{>{\bfseries}p{3.6cm} p{5.2cm} p{4.6cm}}
+\toprule
+Decision & Justification & Requirement/Constraint \\
+\midrule
+Modular monolith over microservices &
+Single deployment unit; no inter-service networking or orchestration. &
+4-person team, one semester, no DevOps budget. \\
+\addlinespace
+Next.js 15 for UI \emph{and} API &
+Co-locating frontend, API routes, and server actions removes a separate
+backend, CORS, and a second pipeline. &
+Simplicity; single Vercel deployment; free tier. \\
+\addlinespace
+Clerk for authentication &
+Production-grade auth, sessions, and JWTs without building or securing a
+custom system; admin via \texttt{publicMetadata}. &
+Security requirement; no auth-infra budget. \\
+\addlinespace
+Prisma + Neon PostgreSQL &
+Type-safe access over a relational 7-model schema; serverless Postgres with a
+free tier and no maintenance. &
+Relational data; zero budget; low maintenance. \\
+\addlinespace
+Vercel hosting &
+Zero-config build and deploy on push to \texttt{main}. &
+Free tier; CI/CD without extra tooling. \\
+\addlinespace
+Five action categories (enum) &
+Mirrors the partner's existing sustainability programme domains. &
+Partner requirement. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Architectural Views}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Logical View}
+
+Figure~\ref{fig:logical} maps the three layers to concrete modules: the
+\texttt{app/} pages (Presentation); the \texttt{app/api/*} route handlers,
+\texttt{app/actions/*} server actions, \texttt{middleware.ts}, and
+\texttt{lib/*} helpers (Application); and \texttt{lib/db.ts} with
+\texttt{prisma/schema.prisma} over Neon (Data).
+
+\dgram{logical_view.png}{0.95}{Logical view: the modules that make up each
+layer of the application.}{fig:logical}
+
+\subsection{Deployment View}
+
+Figure~\ref{fig:deploy} shows the runtime nodes. The browser talks only to the
+Next.js app on Vercel; the app talks to Clerk (HTTPS) and Neon
+(TCP/PostgreSQL via Prisma).
+
+\dgram{deployment_view.png}{0.9}{Deployment view: Vercel (Next.js app), Neon
+(PostgreSQL), and Clerk (auth) as separate nodes, with the required
+environment variables.}{fig:deploy}
+
+\subsection{Data-Flow View}
+
+Figure~\ref{fig:dataflow} traces a single request---logging an action---from
+the browser through authentication, challenge resolution, the serializable
+transaction, and the streak update.
+
+\dgram{dataflow_log_action.png}{0.78}{Data-flow view for ``log an action,''
+from \texttt{POST /api/actions} to the response.}{fig:dataflow}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{C4 Model Diagrams}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Level 1 --- Context}
+\dgram{c4_context.png}{0.85}{C4 Context. The GreenStep system used by Employee
+and Admin actors, delegating authentication to Clerk and persistence to Neon
+PostgreSQL.}{fig:ctx}
+
+Figure~\ref{fig:ctx} gives the highest-level view: employees log actions and
+view leaderboards; admins create challenges, approve teams, and export data.
+
+\subsection{Level 2 --- Container}
+\dgram{c4_container.png}{0.85}{C4 Container. One Next.js container serves UI,
+API routes, server actions, and middleware; it uses the Prisma client to reach
+Neon and the Clerk SDK to validate sessions.}{fig:cont}
+
+\subsection{Level 3 --- Component}
+\dgram{c4_component.png}{0.95}{C4 Component (inside the Next.js container):
+Clerk middleware; the UI pages; the thirteen API route handlers; the
+\texttt{challenge.ts} server actions; the \texttt{lib} helpers
+(\texttt{team-requests}, \texttt{global-challenge}, \texttt{authz}); and the
+Prisma client, which is the single point of database access.}{fig:comp}
+
+As shown in Figure~\ref{fig:comp}, every inbound request first passes through
+the Clerk middleware. Authenticated requests reach a page or one of the API
+route handlers; all database access is centralized through the Prisma client.
+
+\subsection{Level 4 --- Code (Entity-Relationship)}
+\dgram{er_model.png}{0.98}{C4 Code level shown as the entity-relationship model
+of the seven Prisma entities and their keys and relations.}{fig:er}
+
+Figure~\ref{fig:er} is the authoritative data model and is reused as the UML
+class/data-model diagram in Section~\ref{sec:uml}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{UML Diagrams}\label{sec:uml}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Class / Data-Model Diagram}
+
+The class/data-model view is the seven-entity diagram in
+Figure~\ref{fig:er}. The entities are \texttt{User}, \texttt{Challenge},
+\texttt{UserChallenge}, \texttt{Team}, \texttt{TeamMember}, \texttt{Action},
+and \texttt{TeamRequest}. \texttt{UserChallenge} and \texttt{TeamMember} are
+join tables implementing the many-to-many relations User$\leftrightarrow$Challenge
+and User$\leftrightarrow$Team. Two enums constrain string fields:
+\texttt{ActionCategory} and \texttt{TeamRequestStatus}.
+
+\subsection{Sequence Diagrams}
+
+\dgram{seq_log_action.png}{0.95}{Sequence: logging an action. The route
+authenticates via Clerk, ensures the global challenge exists, runs a
+serializable transaction (duplicate check then create), and updates the
+streak.}{fig:seq1}
+
+\dgram{seq_team_request.png}{0.95}{Sequence: team request and admin approval.
+A user submits a \texttt{PENDING} request; an admin approves it, triggering a
+\texttt{\$transaction} that creates the Team and TeamMember and marks the
+request \texttt{APPROVED}.}{fig:seq2}
+
+Figure~\ref{fig:seq1} and Figure~\ref{fig:seq2} detail the two most
+safety-critical flows: action logging (with its duplicate guard) and the
+admin-gated team-creation workflow.
+
+\subsection{Component Diagram}
+
+The component view of the system---the Next.js internals and the external
+Clerk and Neon dependencies---is given by the C4 Level~3 diagram,
+Figure~\ref{fig:comp}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Data Design and Representation}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The schema (\texttt{prisma/schema.prisma}) defines seven models. Primary keys
+are \texttt{cuid} strings. Tables~\ref{tab:core}--\ref{tab:join} list the
+fields; ``U'' marks a unique constraint and ``FK'' a foreign key.
+
+\begin{table}[H]
+\centering
+\caption{Core entities: User, Challenge, and Action.}
+\label{tab:core}
+\begin{tabular}{p{2.6cm} p{4.0cm} p{5.6cm}}
+\toprule
+Model & Key fields & Notable fields / relations \\
+\midrule
+\texttt{User} &
+\texttt{id} (PK), \texttt{clerkId} (U), \texttt{email} (U) &
+\texttt{name}, \texttt{department?}, \texttt{streak} (default 0),
+\texttt{lastActionDate?}, \texttt{onboarded} (default false); has many
+\texttt{Action}, \texttt{UserChallenge}, \texttt{TeamMember}, \texttt{TeamRequest}. \\
+\addlinespace
+\texttt{Challenge} &
+\texttt{id} (PK), \texttt{code} (U) &
+\texttt{name}, \texttt{startDate?}, \texttt{endDate?}; has many
+\texttt{UserChallenge}, \texttt{Team}, \texttt{Action}, \texttt{TeamRequest}. \\
+\addlinespace
+\texttt{Action} &
+\texttt{id} (PK) &
+\texttt{userId} (FK), \texttt{challengeId?} (FK), \texttt{category}
+(\texttt{ActionCategory}), \texttt{actionType}, \texttt{points} (default 0),
+\texttt{note?}, \texttt{imageUrl?} (Text), \texttt{date}. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Team, TeamRequest, and the two join tables.}
+\label{tab:join}
+\begin{tabular}{p{2.8cm} p{4.0cm} p{5.4cm}}
+\toprule
+Model & Key fields & Notable fields / relations \\
+\midrule
+\texttt{Team} &
+\texttt{id} (PK) &
+\texttt{name} (not unique --- names may repeat across challenges),
+\texttt{challengeId?} (FK); has many \texttt{TeamMember}. \\
+\addlinespace
+\texttt{UserChallenge} &
+\texttt{id} (PK); \texttt{@@unique([userId, challengeId])} &
+\texttt{userId} (FK), \texttt{challengeId} (FK) --- enrollment join table. \\
+\addlinespace
+\texttt{TeamMember} &
+\texttt{id} (PK); \texttt{@@unique([userId, teamId])} &
+\texttt{userId} (FK), \texttt{teamId} (FK) --- membership join table. \\
+\addlinespace
+\texttt{TeamRequest} &
+\texttt{id} (PK); \texttt{@@index([challengeId, status])} &
+\texttt{name}, \texttt{message?}, \texttt{status}
+(\texttt{TeamRequestStatus}, default \texttt{PENDING}), \texttt{challengeId}
+(FK), \texttt{requestedById} (FK), \texttt{reviewedById?} (FK),
+\texttt{reviewedAt?}. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Enumerations.}
+\texttt{ActionCategory} = \{\,TRANSPORT, WATER, ENERGY, RECYCLING, FOOD\,\};\
+\texttt{TeamRequestStatus} = \{\,PENDING, APPROVED, REJECTED\,\}. The
+\texttt{[challengeId, status]} index on \texttt{TeamRequest} accelerates the
+admin queue, which filters pending requests by challenge.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Algorithm Explanations}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Dense Rank with Tie Handling (Leaderboards)}
+
+Items are sorted by value (descending), breaking ties by name. Ranks increment
+only when the value changes, so tied entries share a rank (1, 2, 2, 3).
+
+\begin{verbatim}
+sort items by value desc, then name asc
+rank <- 0; prev <- null
+for each item:
+    if prev is null or item.value != prev:
+        rank <- rank + 1
+        prev <- item.value
+    item.rank <- rank
+\end{verbatim}
+
+\subsection{Streak Calculation (on each action)}
+
+\begin{verbatim}
+todayStart     <- midnight(now)
+yesterdayStart <- todayStart - 1 day
+newStreak <- 1
+if user.lastActionDate exists:
+    last <- midnight(user.lastActionDate)
+    if   last == todayStart:     newStreak <- user.streak       # already today
+    elif last == yesterdayStart: newStreak <- user.streak + 1   # consecutive
+    else:                        newStreak <- 1                 # gap -> reset
+update user.streak <- newStreak, lastActionDate <- now
+\end{verbatim}
+
+\subsection{Duplicate-Submission Guard (10\,s window + serializable txn)}
+
+To prevent double-logging from rapid taps or retries, creation runs inside a
+\texttt{SERIALIZABLE} transaction that first checks for an identical action
+within the last ten seconds.
+
+\begin{verbatim}
+cutoff <- now - 10 seconds
+BEGIN TRANSACTION (SERIALIZABLE):
+    existing <- Action where userId, challengeId, category, actionType,
+                points, note, imageUrl all match AND createdAt >= cutoff
+    if existing: throw DUPLICATE          # -> HTTP 409
+    else:        create Action
+COMMIT
+# a Prisma P2034 serialization failure is also returned as HTTP 409
+\end{verbatim}
+
+\subsection{Unique Challenge-Code Generation}
+
+\begin{verbatim}
+do:
+    code <- random base36 string, 6 chars, upper-cased
+while a Challenge with that code already exists
+\end{verbatim}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Deployment Plan}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{itemize}
+    \item \textbf{Hosting / CI-CD.} The app is hosted on \textbf{Vercel}.
+    Building and deploying are triggered by pushing to \texttt{main} (or via
+    \texttt{vercel --prod}); Vercel installs dependencies, runs
+    \texttt{next build}, and serves the result.
+    \item \textbf{Database.} \textbf{Neon} serverless PostgreSQL. The schema is
+    applied with \texttt{prisma db push}; the project intentionally has no
+    migrations folder for this phase.
+    \item \textbf{Authentication.} \textbf{Clerk}. Administrative privileges
+    are granted by setting a Clerk user's \texttt{publicMetadata.role} to
+    \texttt{"admin"}.
+    \item \textbf{Required environment variables.}
+    \texttt{NEXT\_PUBLIC\_CLERK\_PUBLISHABLE\_KEY},
+    \texttt{CLERK\_SECRET\_KEY}, and \texttt{DATABASE\_URL} (plus the Clerk
+    sign-in/up redirect URLs).
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{thebibliography}{9}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\bibitem{nextjs}
+Vercel, ``Next.js Documentation,'' 2024. [Online]. Available:
+\url{https://nextjs.org/docs}
+
+\bibitem{clerk}
+Clerk, ``Clerk Documentation,'' 2024. [Online]. Available:
+\url{https://clerk.com/docs}
+
+\bibitem{prisma}
+Prisma, ``Prisma ORM Documentation,'' 2024. [Online]. Available:
+\url{https://www.prisma.io/docs}
+
+\bibitem{neon}
+Neon, ``Neon Serverless Postgres Documentation,'' 2024. [Online]. Available:
+\url{https://neon.tech/docs}
+
+\bibitem{c4}
+S. Brown, ``The C4 model for visualising software architecture,'' 2024.
+[Online]. Available: \url{https://c4model.com/}
+
+\bibitem{cisc489}
+E. Adekoya, K. Alkhaleefa, and J. Dunlap, ``Employee Sustainability Challenge
+App: Final Project Documentation,'' CISC489 Topics in Human-Computer
+Interaction, University of St.\ Thomas, Dec.\ 2025.
+
+\end{thebibliography}
+
+\end{document}

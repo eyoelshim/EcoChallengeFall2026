@@ -1,0 +1,245 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{parskip}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=false,
+    hidelinks
+}
+
+\title{\textbf{GreenStep Employee Sustainability Challenge}\\
+\large Product Requirements Document}
+\author{Hadi Shaar, Naisha Srivastav, Oli Gurmessa, and Nathanael Agbemadon}
+\date{Spring 2026 \\ Professor Priscilla Jimenez}
+
+\begin{document}
+
+\maketitle
+
+\section{Product Overview}
+
+GreenStep Employee is a web-based sustainability challenge platform that helps
+employees log eco-friendly actions, earn points and badges, participate in
+teams, and compare progress through leaderboards. The product replaces
+spreadsheet-based tracking with a centralized, low-maintenance system that is
+more engaging for end users and easier to manage for administrators.
+
+The primary user groups are:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Employees}, who join challenges, log actions, and monitor
+    their own progress.
+    \item \textbf{Administrators}, who configure challenges, review team
+    requests, and export participation data.
+\end{itemize}
+
+\section{Core Functional Scope}
+
+At the end of the Spring 2026 capstone, the product supports:
+\begin{itemize}[leftmargin=1.5em]
+    \item secure sign-in and protected dashboard access,
+    \item joining challenges through a join code,
+    \item joining or leaving a team within a challenge,
+    \item submitting team requests for administrator review,
+    \item logging sustainability actions across multiple categories,
+    \item awarding points, badges, streaks, and leaderboard positions,
+    \item viewing challenge-specific and global activity data,
+    \item category and challenge filtering for dashboard insights, and
+    \item exporting CSV data from the admin workspace.
+\end{itemize}
+
+\section{Detailed Use Cases}
+
+\subsection{Use Case 1: Employee Logs a Sustainability Action}
+
+\textbf{Primary Actor:} Employee
+
+\textbf{Goal:} Record a completed sustainability action and receive the
+appropriate points inside the correct challenge context.
+
+\textbf{Preconditions:}
+\begin{itemize}[leftmargin=1.5em]
+    \item The employee is authenticated.
+    \item The employee has completed onboarding.
+    \item The employee is on the dashboard or log action page.
+\end{itemize}
+
+\textbf{Trigger:} The employee decides to log a completed action such as biking
+to work, recycling plastic, or turning off unused lights.
+
+\textbf{Main Success Scenario:}
+\begin{enumerate}[leftmargin=1.8em]
+    \item The employee opens the \texttt{Log Action} experience.
+    \item The employee browses by category, recent actions, or popular actions,
+    or uses search to find a relevant action.
+    \item The employee selects an action from the list.
+    \item The system opens the action detail page and shows the base point
+    value.
+    \item The employee optionally adds a story or image.
+    \item The employee submits the action.
+    \item The system validates the request and checks for duplicate rapid
+    submissions.
+    \item The system stores the action in the database, scoped to the selected
+    challenge or the global activity context.
+    \item The system updates the employee's points, activity history, streak,
+    badges, and relevant leaderboard views.
+    \item The system returns the employee to a success state where the updated
+    action is visible in activity feeds and dashboard summaries.
+\end{enumerate}
+
+\textbf{Alternative / Exception Flows:}
+\begin{itemize}[leftmargin=1.5em]
+    \item If the employee submits the same action too quickly, the system
+    rejects the duplicate submission and shows an error.
+    \item If the employee is no longer authenticated, the system blocks the
+    action and requires sign-in.
+    \item If an optional image or note is omitted, the action is still
+    accepted with only the applicable points.
+\end{itemize}
+
+\textbf{Postconditions:}
+\begin{itemize}[leftmargin=1.5em]
+    \item A new action record exists in the database.
+    \item The employee's activity feed and points reflect the logged action.
+    \item Challenge-specific and global views remain consistent with the new
+    data.
+\end{itemize}
+
+\subsection{Use Case 2: Administrator Reviews a Team Request and Manages Challenges}
+
+\textbf{Primary Actor:} Administrator
+
+\textbf{Goal:} Manage challenge participation by reviewing pending team
+requests and configuring challenge data from the admin workspace.
+
+\textbf{Preconditions:}
+\begin{itemize}[leftmargin=1.5em]
+    \item The administrator is authenticated.
+    \item The administrator's Clerk metadata role is set to
+    \texttt{admin}.
+\end{itemize}
+
+\textbf{Trigger:} The administrator opens the admin workspace to review a team
+request or create/export challenge data.
+
+\textbf{Main Success Scenario:}
+\begin{enumerate}[leftmargin=1.8em]
+    \item The administrator navigates to the admin page.
+    \item The system verifies that the current user has admin access.
+    \item The system displays pending team requests, recently reviewed
+    requests, challenge summaries, and export controls.
+    \item The administrator opens a pending team request.
+    \item The administrator reviews the requested team name, requester, and
+    challenge context.
+    \item The administrator chooses to approve or reject the request.
+    \item If approved, the system creates the team if needed, adds the user to
+    the team, and updates the request status.
+    \item If rejected, the system records the rejection status and reviewer.
+    \item The administrator may also create a new challenge, generate demo
+    challenges, or export activity data to CSV.
+    \item The system revalidates the affected dashboard and admin views so the
+    updated state is immediately reflected.
+\end{enumerate}
+
+\textbf{Alternative / Exception Flows:}
+\begin{itemize}[leftmargin=1.5em]
+    \item If a non-admin user attempts to access the admin workspace, the
+    system blocks access and displays an admin-only message.
+    \item If a team request is invalid or has already been processed, the
+    system rejects the action and preserves data integrity.
+    \item If the administrator attempts to create a duplicate team name within
+    the same challenge, the system prevents the duplicate.
+\end{itemize}
+
+\textbf{Postconditions:}
+\begin{itemize}[leftmargin=1.5em]
+    \item The request is stored with an approved or rejected status.
+    \item Relevant team, challenge, and dashboard data remain synchronized.
+    \item Administrators retain a recent history of reviewed requests.
+\end{itemize}
+
+\section{User Stories with Acceptance Criteria}
+
+\subsection{User Story 1: Join a Challenge}
+
+\textbf{Story:} As an employee, I want to join a challenge with a code so that
+my actions and team participation are associated with the correct campaign.
+
+\textbf{Acceptance Criteria:}
+\begin{itemize}[leftmargin=1.5em]
+    \item The user can open a join challenge modal from the dashboard.
+    \item The user can enter a challenge code and submit it.
+    \item If the code is valid and the challenge is active, the user is added
+    to that challenge.
+    \item If the user already joined the challenge, the system prevents a
+    duplicate join and shows an explanatory error.
+    \item If the challenge has ended or the code is invalid, the system
+    displays a clear error message.
+\end{itemize}
+
+\subsection{User Story 2: View Filtered Progress by Challenge or Global Scope}
+
+\textbf{Story:} As an employee, I want to switch between all activity and a
+specific challenge so that I can understand my performance in the right
+context.
+
+\textbf{Acceptance Criteria:}
+\begin{itemize}[leftmargin=1.5em]
+    \item The dashboard provides a scope selector for all activity and
+    joined challenges.
+    \item When the user switches scope, points, leaderboard data, and activity
+    summaries update to match that scope.
+    \item Global views aggregate lifetime data across the system.
+    \item Challenge views show only challenge-specific points, actions, and
+    team context.
+    \item The system preserves consistent labels so the user can distinguish
+    global and challenge-scoped information.
+\end{itemize}
+
+\subsection{User Story 3: Submit a Team Request}
+
+\textbf{Story:} As an employee without a team, I want to request a new team in
+my challenge so that an administrator can review and approve it.
+
+\textbf{Acceptance Criteria:}
+\begin{itemize}[leftmargin=1.5em]
+    \item The user can open a request form from the team area of the dashboard.
+    \item The user must already belong to the challenge before submitting a
+    request.
+    \item The request captures the desired team name and optional message.
+    \item The system prevents duplicate pending requests for the same context.
+    \item Submitted requests appear in the user's request history and in the
+    admin review queue.
+\end{itemize}
+
+\subsection{User Story 4: Export Participation Data}
+
+\textbf{Story:} As an administrator, I want to export sustainability activity
+data so that I can analyze participation outside the application and share
+results with stakeholders.
+
+\textbf{Acceptance Criteria:}
+\begin{itemize}[leftmargin=1.5em]
+    \item The admin workspace provides CSV export controls.
+    \item The administrator can export all activity or challenge-specific
+    activity.
+    \item The generated CSV includes enough participation data to support
+    reporting and review.
+    \item Only authorized administrators can access export actions.
+    \item The exported data reflects the latest saved records in the system.
+\end{itemize}
+
+\section{Notes for Future Teams}
+
+Future teams should treat action logging, challenge membership, team
+membership, and admin request review as tightly connected product areas.
+Changes in one area often affect leaderboards, dashboard summaries, and export
+behavior. Before extending the system, teams should confirm whether a feature
+is global, challenge-scoped, or admin-only and keep that distinction explicit
+in both the UI and API design.
+
+\end{document}
