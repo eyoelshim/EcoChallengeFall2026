@@ -1,4 +1,4 @@
-import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
+import { Show, SignInButton } from "@clerk/nextjs";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { Leaf, TrendingUp, Users, ArrowRight } from "lucide-react";
@@ -76,16 +76,16 @@ export default async function Home() {
 
           {/* CTA */}
           <div className="mt-6">
-          <SignedOut>
+          <Show when="signed-out">
             <SignInButton mode="modal">
               <button className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0b5d1e] py-4 text-[16px] font-semibold text-white shadow-sm">
                 Get Started
                 <ArrowRight className="h-4.5 w-4.5" />
               </button>
             </SignInButton>
-          </SignedOut>
+          </Show>
 
-          <SignedIn>
+          <Show when="signed-in">
             <a
               href="/dashboard"
               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0b5d1e] py-4 text-[16px] font-semibold text-white shadow-sm"
@@ -93,7 +93,7 @@ export default async function Home() {
               Go to Dashboard
               <ArrowRight className="h-4.5 w-4.5" />
             </a>
-          </SignedIn>
+          </Show>
 
           <p className="mt-4 text-center text-[11px] text-[#9ca3af]">
             Part of your company&apos;s sustainability challenge

@@ -806,7 +806,6 @@ export default function DashboardClient({
           )}
           <div className="hidden lg:block h-8 w-[1px] bg-[#ececea] mx-1"></div>
           <UserButton
-            afterSignOutUrl="/"
             appearance={{ elements: { avatarBox: "h-9 w-9" } }}
           />
         </div>
@@ -836,7 +835,6 @@ export default function DashboardClient({
             </div>
           </Link>
           <UserButton
-            afterSignOutUrl="/"
             appearance={{ elements: { avatarBox: "h-9 w-9" } }}
           />
         </div>

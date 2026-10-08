@@ -209,7 +209,6 @@ export default function LogActionPage() {
             Dashboard
           </Link>
           <UserButton
-            afterSignOutUrl="/"
             appearance={{ elements: { avatarBox: "h-9 w-9" } }}
           />
         </div>
@@ -235,7 +234,6 @@ export default function LogActionPage() {
           </div>
         </Link>
         <UserButton
-          afterSignOutUrl="/"
           appearance={{ elements: { avatarBox: "h-10 w-10" } }}
         />
       </header>
