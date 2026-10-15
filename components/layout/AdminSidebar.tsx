@@ -6,10 +6,10 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Calendar,
-  LayoutTemplate,
-  Users,
   Building2,
+  Users,
   BarChart3,
+  LayoutTemplate,
   ShieldCheck,
 } from "lucide-react";
 
@@ -22,10 +22,10 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/admin/admin", icon: LayoutDashboard },
   { label: "Challenges", href: "/admin/admin/challenges", icon: Calendar },
+  { label: "Groups", href: "/admin/admin/groups", icon: Building2 },
+  { label: "Users", href: "/admin/admin/users", icon: Users },
+  { label: "Reports", href: "/admin/admin/reports", icon: BarChart3 },
   { label: "Templates", href: "/admin/admin/templates", icon: LayoutTemplate },
-  { label: "Users & Roles", href: "/admin/admin/users", icon: Users },
-  { label: "Departments & Groups", href: "/admin/admin/groups", icon: Building2 },
-  { label: "Reports & Analytics", href: "/admin/admin/reports", icon: BarChart3 },
 ];
 
 export default function AdminSidebar() {
