@@ -1,6 +1,6 @@
 import React from "react";
 import Link from "next/link";
-import { Plus, Search, Eye } from "lucide-react";
+import { Plus, Eye } from "lucide-react";
 
 type Status = "Active" | "Upcoming" | "Completed";
 

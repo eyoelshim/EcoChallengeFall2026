@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Calendar, LayoutTemplate, Users, BarChart3, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Calendar, LayoutTemplate, Users, ShieldCheck } from "lucide-react";
 
 interface NavItem {
   label: string;

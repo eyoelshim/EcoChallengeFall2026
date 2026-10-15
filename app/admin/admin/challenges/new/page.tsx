@@ -1,12 +1,39 @@
 // Runs in the browser: needed for form state and the submit handler.
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
 
 const categories = ["Campus-wide", "Transportation", "Energy", "Waste", "Food"];
+
+const TEMPLATE_PRESETS: Record<string, { name: string; code: string; category: string; description: string }> = {
+  commuter: {
+    name: "Commuter Challenge",
+    code: "CC-F26",
+    category: "Transportation",
+    description: "Encourage biking, walking, transit, and carpooling instead of driving solo.",
+  },
+  energy: {
+    name: "Energy Saver Sprint",
+    code: "ES-F26",
+    category: "Energy",
+    description: "Cut electricity use with lights-off, unplugging, and cold-wash habits.",
+  },
+  "zero-waste": {
+    name: "Zero Waste Week",
+    code: "ZW-S26",
+    category: "Waste",
+    description: "Minimize landfill waste through reusables, composting, and recycling.",
+  },
+  "food-based": {
+    name: "Food-Based Challenge",
+    code: "FB-F26",
+    category: "Food",
+    description: "Make greener food choices: less waste, more local, and fewer packaged meals.",
+  },
+};
 
 // Error message per field; a missing key means the field is valid.
 type FormErrors = {
@@ -31,7 +58,22 @@ export default function NewChallengePage() {
   const [endDate, setEndDate] = useState("");
   const [description, setDescription] = useState("");
 
+  const [createdChallenge, setCreatedChallenge] = useState<{ name: string; code: string } | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const templateId = params.get("template");
+      if (templateId && TEMPLATE_PRESETS[templateId]) {
+        const preset = TEMPLATE_PRESETS[templateId];
+        setName(preset.name);
+        setCode(preset.code);
+        setCategory(preset.category);
+        setDescription(preset.description);
+      }
+    }
+  }, []);
 
   // Returns an error message for each invalid field.
   function validate(): FormErrors {
@@ -80,9 +122,8 @@ export default function NewChallengePage() {
       return;
     }
 
-    // Nothing is saved yet: the form isn't connected to the database in Demo 1.
-    alert('Challenge "' + name + '" (' + code + ") created.");
-    router.push("/admin/admin/challenges");
+    // Demo 1 mock feedback: trigger confirmation modal
+    setCreatedChallenge({ name, code });
   }
 
   // Red border on invalid fields.
@@ -190,6 +231,54 @@ export default function NewChallengePage() {
           </button>
         </div>
       </form>
+
+      {createdChallenge && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="challenge-confirm-title"
+        >
+          <div className="w-full max-w-md bg-white rounded-xl shadow-xl p-6 text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+            </div>
+            <h2 id="challenge-confirm-title" className="mt-4 text-lg font-semibold text-slate-900">
+              Challenge created
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              <span className="font-medium text-slate-900">{createdChallenge.name}</span> ({createdChallenge.code}) was created.
+            </p>
+            <p className="mt-2 text-xs text-slate-400">
+              Demo 1: Challenge preview generated successfully.
+            </p>
+            <div className="mt-6 flex gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setName("");
+                  setCode("");
+                  setCategory("");
+                  setStartDate("");
+                  setEndDate("");
+                  setDescription("");
+                  setCreatedChallenge(null);
+                }}
+                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+              >
+                Create another
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/admin/admin/challenges")}
+                className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
