@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Calendar, Users, BarChart3, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Calendar, LayoutTemplate, Users, ShieldCheck } from "lucide-react";
 
 interface NavItem {
   label: string;
@@ -14,6 +14,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/admin/admin", icon: LayoutDashboard },
   { label: "Challenges", href: "/admin/admin/challenges", icon: Calendar },
+  { label: "Templates", href: "/admin/admin/templates", icon: LayoutTemplate },
   { label: "Users & Roles", href: "/admin/admin/users", icon: Users },
 ];
 
