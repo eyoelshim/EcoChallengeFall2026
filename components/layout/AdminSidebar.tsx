@@ -3,7 +3,15 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Calendar, LayoutTemplate, Users, ShieldCheck } from "lucide-react";
+import {
+  LayoutDashboard,
+  Calendar,
+  LayoutTemplate,
+  Users,
+  Building2,
+  BarChart3,
+  ShieldCheck,
+} from "lucide-react";
 
 interface NavItem {
   label: string;
@@ -16,6 +24,8 @@ const navItems: NavItem[] = [
   { label: "Challenges", href: "/admin/admin/challenges", icon: Calendar },
   { label: "Templates", href: "/admin/admin/templates", icon: LayoutTemplate },
   { label: "Users & Roles", href: "/admin/admin/users", icon: Users },
+  { label: "Departments & Groups", href: "/admin/admin/groups", icon: Building2 },
+  { label: "Reports & Analytics", href: "/admin/admin/reports", icon: BarChart3 },
 ];
 
 export default function AdminSidebar() {
@@ -30,7 +40,9 @@ export default function AdminSidebar() {
 
       <nav className="p-3 space-y-1 flex-1">
         {navItems.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive =
+            pathname === item.href ||
+            (item.href !== "/admin/admin" && pathname.startsWith(item.href));
           const Icon = item.icon;
           return (
             <Link
