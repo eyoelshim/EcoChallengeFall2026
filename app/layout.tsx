@@ -3,8 +3,11 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GreenStep Employee",
+  title: "GreenStep",
   description: "Gamified employee sustainability challenge platform",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({

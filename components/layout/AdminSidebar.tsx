@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -10,7 +11,6 @@ import {
   Users,
   BarChart3,
   LayoutTemplate,
-  ShieldCheck,
 } from "lucide-react";
 
 interface NavItem {
@@ -33,8 +33,14 @@ export default function AdminSidebar() {
 
   return (
     <aside className="w-60 bg-white border-r border-slate-200 min-h-screen flex flex-col shrink-0">
-      <div className="h-16 flex items-center px-6 border-b border-slate-200 gap-2">
-        <ShieldCheck className="w-6 h-6 text-emerald-600" />
+      <div className="h-16 flex items-center px-6 border-b border-slate-200 gap-2.5">
+        <Image
+          src="/GreenStep.png"
+          alt="GreenStep"
+          width={28}
+          height={28}
+          className="w-7 h-7 rounded-lg object-contain"
+        />
         <span className="font-bold text-lg text-slate-900 tracking-tight">GreenStep Admin</span>
       </div>
 
