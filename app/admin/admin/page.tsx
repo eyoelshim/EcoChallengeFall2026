@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   Users,
@@ -15,117 +17,120 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-interface ActivityItem {
-  id: string;
-  userId: string;
-  userName: string;
-  actionName: string;
-  points: number;
-  challengeId: string;
-  challengeName: string;
-  category: "Transportation" | "Waste & Recycling" | "Energy Conservation" | "Water Conservation";
-  timeAgo: string;
-}
-
-const RECENT_ACTIVITIES: ActivityItem[] = [
-  {
-    id: "act-1",
-    userId: "u3",
-    userName: "Sarah Jenkins",
-    actionName: "Biked to Campus",
-    points: 15,
-    challengeId: "1",
-    challengeName: "Commuter Challenge",
-    category: "Transportation",
-    timeAgo: "5m ago",
-  },
-  {
-    id: "act-2",
-    userId: "u1",
-    userName: "Jordan Reyes",
-    actionName: "Turned off office lights",
-    points: 10,
-    challengeId: "2",
-    challengeName: "Energy Saver Sprint",
-    category: "Energy Conservation",
-    timeAgo: "18m ago",
-  },
-  {
-    id: "act-3",
-    userId: "u2",
-    userName: "Marcus Lee",
-    actionName: "Fixed breakroom faucet aerator",
-    points: 20,
-    challengeId: "c3",
-    challengeName: "Campus Clean Water Drive",
-    category: "Water Conservation",
-    timeAgo: "42m ago",
-  },
-  {
-    id: "act-4",
-    userId: "u3",
-    userName: "Priya Shah",
-    actionName: "Composted lunch food scraps",
-    points: 15,
-    challengeId: "3",
-    challengeName: "Zero Waste Week",
-    category: "Waste & Recycling",
-    timeAgo: "2h ago",
-  },
-  {
-    id: "act-5",
-    userId: "u4",
-    userName: "Daniel Okafor",
-    actionName: "Printed double-sided monthly budget",
-    points: 5,
-    challengeId: "3",
-    challengeName: "Zero Waste Week",
-    category: "Waste & Recycling",
-    timeAgo: "4h ago",
-  },
-];
-
-const LEADERBOARD_USERS = [
-  { rank: 1, id: "u1", name: "Jordan Reyes", role: "SuperAdmin", team: "Team Alpha", points: 1280, pct: 100 },
-  { rank: 2, id: "u3", name: "Priya Shah", role: "GeneralUser", team: "Team Alpha", points: 860, pct: 67 },
-  { rank: 3, id: "u2", name: "Marcus Lee", role: "Admin", team: "Team Beta", points: 740, pct: 58 },
-  { rank: 4, id: "u4", name: "Daniel Okafor", role: "GeneralUser", team: "UST Operations", points: 210, pct: 16 },
-];
-
-const CATEGORY_PILL_STYLES: Record<ActivityItem["category"], string> = {
-  Transportation: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  "Waste & Recycling": "bg-blue-50 text-blue-700 ring-blue-200",
-  "Energy Conservation": "bg-amber-50 text-amber-700 ring-amber-200",
-  "Water Conservation": "bg-cyan-50 text-cyan-700 ring-cyan-200",
-};
+import { getMockChallenges, type Challenge } from "./challenges/mock-data";
+import { getMockUsers, type MockUser } from "./users/mock-data";
+import { getMockGroups, type DepartmentGroup } from "./groups/mock-data";
+import {
+  INITIAL_PARTICIPATION_RECORDS,
+  CATEGORY_COLORS,
+  CATEGORY_BADGES,
+  type ParticipationRecord,
+} from "./reports/mock-data";
 
 export default function AdminDashboardPage() {
+  const [mounted, setMounted] = useState(false);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [users, setUsers] = useState<MockUser[]>([]);
+  const [groups, setGroups] = useState<DepartmentGroup[]>([]);
+
+  useEffect(() => {
+    setChallenges(getMockChallenges());
+    setUsers(getMockUsers());
+    setGroups(getMockGroups());
+    setMounted(true);
+  }, []);
+
+  // Compute live KPIs from shared mock stores
+  const kpis = useMemo(() => {
+    const activeChallenges = challenges.filter((c) => c.status === "Active").length;
+    const upcomingChallenges = challenges.filter((c) => c.status === "Upcoming").length;
+    const activeUsers = users.filter((u) => u.status === "Active").length;
+    const totalActions = users.reduce((sum, u) => sum + (u.actionsLogged || 0), 0) || 1420;
+    const totalPoints = users.reduce((sum, u) => sum + (u.points || 0), 0) || 12450;
+    const estimatedCO2 = Math.round(totalActions * 0.27);
+    const avgPointsPerUser = activeUsers > 0 ? Math.round(totalPoints / activeUsers) : 0;
+
+    return {
+      activeChallenges,
+      upcomingChallenges,
+      activeUsers,
+      totalActions,
+      totalPoints,
+      estimatedCO2,
+      avgPointsPerUser,
+    };
+  }, [challenges, users]);
+
+  // Derive top leaderboard participants sorted by actual points
+  const topParticipants = useMemo(() => {
+    if (!users.length) return [];
+    const sorted = [...users].sort((a, b) => b.points - a.points).slice(0, 4);
+    const maxPoints = sorted[0]?.points || 1;
+    return sorted.map((user, idx) => ({
+      rank: idx + 1,
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      department: user.department,
+      groupName: user.groupName || "Individual",
+      points: user.points,
+      pct: Math.round((user.points / maxPoints) * 100),
+    }));
+  }, [users]);
+
+  // Derive category distribution from participation dataset
+  const categoryDistribution = useMemo(() => {
+    const counts: Record<string, number> = {};
+    INITIAL_PARTICIPATION_RECORDS.forEach((rec) => {
+      counts[rec.category] = (counts[rec.category] || 0) + 1;
+    });
+    const total = INITIAL_PARTICIPATION_RECORDS.length || 1;
+    return Object.entries(counts).map(([category, count]) => ({
+      category,
+      count,
+      pct: Math.round((count / total) * 100),
+      color: CATEGORY_COLORS[category] || "#10B981",
+    }));
+  }, []);
+
+  // Live recent activity feed derived from participation records
+  const recentFeed = useMemo(() => {
+    return INITIAL_PARTICIPATION_RECORDS.slice(0, 5).map((rec, index) => {
+      // Relative time indicators for demo visualization
+      const timeLabels = ["5m ago", "18m ago", "42m ago", "2h ago", "4h ago"];
+      return {
+        ...rec,
+        timeAgo: timeLabels[index] || rec.completedAt,
+      };
+    });
+  }, []);
+
   const statCards = [
     {
       title: "Active Challenges",
-      value: "3",
-      trend: "2 upcoming sprints scheduled",
+      value: mounted ? kpis.activeChallenges.toString() : "3",
+      trend: `${mounted ? kpis.upcomingChallenges : 2} upcoming sprints scheduled`,
       icon: Calendar,
       iconBg: "text-emerald-600 bg-emerald-50 ring-emerald-100",
     },
     {
       title: "Actions Logged",
-      value: "1,420",
-      trend: "+14% vs last week · 384 kg CO2",
+      value: mounted ? kpis.totalActions.toLocaleString() : "1,420",
+      trend: `+14% vs last week · ${mounted ? kpis.estimatedCO2 : 384} kg CO2`,
       icon: Award,
       iconBg: "text-purple-600 bg-purple-50 ring-purple-100",
     },
     {
       title: "Active Participants",
-      value: "128",
-      trend: "78.4% participation across 3 groups",
+      value: mounted ? kpis.activeUsers.toString() : "128",
+      trend: `Across ${mounted ? groups.length : 3} campus departments`,
       icon: Users,
       iconBg: "text-blue-600 bg-blue-50 ring-blue-100",
     },
     {
       title: "Total Points Earned",
-      value: "12,450",
-      trend: "Avg 97 pts/participant",
+      value: mounted ? kpis.totalPoints.toLocaleString() : "12,450",
+      trend: `Avg ${mounted ? kpis.avgPointsPerUser : 97} pts/participant`,
       icon: Sparkles,
       iconBg: "text-amber-600 bg-amber-50 ring-amber-100",
     },
@@ -278,7 +283,7 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="p-5 divide-y divide-slate-100 flex-1">
-            {RECENT_ACTIVITIES.map((activity) => (
+            {recentFeed.map((activity: ParticipationRecord & { timeAgo: string }) => (
               <div
                 key={activity.id}
                 className="py-3.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3"
@@ -293,7 +298,7 @@ export default function AdminDashboardPage() {
                     </Link>
                     <span className="text-xs text-slate-400">logged</span>
                     <span className="text-sm font-semibold text-slate-800">
-                      {activity.actionName}
+                      {activity.action}
                     </span>
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
                       +{activity.points} pts
@@ -310,7 +315,9 @@ export default function AdminDashboardPage() {
                     </Link>
                     <span>·</span>
                     <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ring-1 ${CATEGORY_PILL_STYLES[activity.category]}`}
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ring-1 ${
+                        CATEGORY_BADGES[activity.category] || "bg-slate-100 text-slate-700 ring-slate-200"
+                      }`}
                     >
                       {activity.category}
                     </span>
@@ -330,7 +337,7 @@ export default function AdminDashboardPage() {
               href="/admin/admin/reports"
               className="text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
             >
-              See all 1,420 participation records in Reports &rarr;
+              See all participation records in Reports &rarr;
             </Link>
           </div>
         </div>
@@ -353,7 +360,7 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="space-y-3.5">
-              {LEADERBOARD_USERS.map((user) => (
+              {(mounted ? topParticipants : []).map((user) => (
                 <div key={user.id} className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 min-w-0">
@@ -377,7 +384,7 @@ export default function AdminDashboardPage() {
                         {user.name}
                       </Link>
                       <span className="text-slate-400 truncate hidden sm:inline">
-                        ({user.team})
+                        ({user.groupName})
                       </span>
                     </div>
                     <span className="font-bold text-slate-900 shrink-0">
@@ -412,57 +419,31 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="space-y-3 text-xs">
-              <div>
-                <div className="flex justify-between font-medium text-slate-700 mb-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    Transportation
-                  </span>
-                  <span className="font-bold text-slate-900">42% (596 acts)</span>
+              {categoryDistribution.map((cat) => (
+                <div key={cat.category}>
+                  <div className="flex justify-between font-medium text-slate-700 mb-1">
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: cat.color }}
+                      />
+                      {cat.category}
+                    </span>
+                    <span className="font-bold text-slate-900">
+                      {cat.pct}% ({cat.count} acts)
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                    <div
+                      className="h-2 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${cat.pct}%`,
+                        backgroundColor: cat.color,
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-emerald-500 h-2 rounded-full" style={{ width: "42%" }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between font-medium text-slate-700 mb-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                    Waste & Recycling
-                  </span>
-                  <span className="font-bold text-slate-900">28% (398 acts)</span>
-                </div>
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-blue-500 h-2 rounded-full" style={{ width: "28%" }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between font-medium text-slate-700 mb-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                    Energy Conservation
-                  </span>
-                  <span className="font-bold text-slate-900">18% (256 acts)</span>
-                </div>
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-amber-500 h-2 rounded-full" style={{ width: "18%" }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between font-medium text-slate-700 mb-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
-                    Water Conservation
-                  </span>
-                  <span className="font-bold text-slate-900">12% (170 acts)</span>
-                </div>
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-cyan-500 h-2 rounded-full" style={{ width: "12%" }} />
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </div>
