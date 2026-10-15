@@ -2,64 +2,14 @@ import React from "react";
 import Link from "next/link";
 import { Plus, Eye } from "lucide-react";
 
-type Status = "Active" | "Upcoming" | "Completed";
-
-type Challenge = {
-  id: string;
-  title: string;
-  code: string;
-  startDate: string;
-  endDate: string;
-  category: string;
-  status: Status;
-  participantCount: number;
-};
-
-// Mock data for Demo 1. Keep in sync with challenges/[id]/page.tsx until the API is wired up.
-const challenges: Challenge[] = [
-  {
-    id: "1",
-    title: "Commuter Challenge",
-    code: "CC-F26",
-    startDate: "2026-10-01",
-    endDate: "2026-10-31",
-    category: "Transportation",
-    status: "Active",
-    participantCount: 84,
-  },
-  {
-    id: "2",
-    title: "Energy Saver Sprint",
-    code: "ES-F26",
-    startDate: "2026-11-02",
-    endDate: "2026-11-09",
-    category: "Energy",
-    status: "Upcoming",
-    participantCount: 26,
-  },
-  {
-    id: "3",
-    title: "Zero Waste Week",
-    code: "ZW-S26",
-    startDate: "2026-04-13",
-    endDate: "2026-04-19",
-    category: "Waste",
-    status: "Completed",
-    participantCount: 112,
-  },
-];
-
-// Badge colors per status.
-const badgeStyles: Record<Status, string> = {
-  Active: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
-  Upcoming: "bg-blue-50 text-blue-700 ring-blue-600/20",
-  Completed: "bg-slate-100 text-slate-600 ring-slate-500/20",
-};
+import { getMockChallenges, BADGE_STYLES } from "./mock-data";
 
 // Last heading is blank: that column holds the View button.
 const columnHeadings = ["Title", "Code", "Dates", "Category", "Status", "Participant Count", ""];
 
 export default function AdminChallengesPage() {
+  const challenges = getMockChallenges();
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -92,7 +42,7 @@ export default function AdminChallengesPage() {
           <tbody className="divide-y divide-slate-100">
             {challenges.map((challenge) => {
               const dateRange = challenge.startDate + " - " + challenge.endDate;
-              const badgeColor = badgeStyles[challenge.status];
+              const badgeColor = BADGE_STYLES[challenge.status];
               const badgeClass = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset " + badgeColor;
               const detailLink = "/admin/admin/challenges/" + challenge.id;
 

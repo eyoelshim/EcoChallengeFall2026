@@ -5,35 +5,13 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import {
+  CHALLENGE_CATEGORIES,
+  TEMPLATE_PRESETS,
+  createMockChallenge,
+} from "../mock-data";
 
-const categories = ["Campus-wide", "Transportation", "Energy", "Waste", "Food"];
-
-const TEMPLATE_PRESETS: Record<string, { name: string; code: string; category: string; description: string }> = {
-  commuter: {
-    name: "Commuter Challenge",
-    code: "CC-F26",
-    category: "Transportation",
-    description: "Encourage biking, walking, transit, and carpooling instead of driving solo.",
-  },
-  energy: {
-    name: "Energy Saver Sprint",
-    code: "ES-F26",
-    category: "Energy",
-    description: "Cut electricity use with lights-off, unplugging, and cold-wash habits.",
-  },
-  "zero-waste": {
-    name: "Zero Waste Week",
-    code: "ZW-S26",
-    category: "Waste",
-    description: "Minimize landfill waste through reusables, composting, and recycling.",
-  },
-  "food-based": {
-    name: "Food-Based Challenge",
-    code: "FB-F26",
-    category: "Food",
-    description: "Make greener food choices: less waste, more local, and fewer packaged meals.",
-  },
-};
+const categories = CHALLENGE_CATEGORIES;
 
 // Error message per field; a missing key means the field is valid.
 type FormErrors = {
@@ -122,8 +100,16 @@ export default function NewChallengePage() {
       return;
     }
 
-    // Demo 1 mock feedback: trigger confirmation modal
-    setCreatedChallenge({ name, code });
+    // Demo 1 mock feedback: persist to mock store and trigger confirmation modal
+    const created = createMockChallenge({
+      name,
+      code,
+      category,
+      startDate,
+      endDate,
+      description,
+    });
+    setCreatedChallenge({ name: created.title, code: created.code });
   }
 
   // Red border on invalid fields.

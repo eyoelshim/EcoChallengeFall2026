@@ -2,110 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Calendar, Tag, Users } from "lucide-react";
-
-type Status = "Active" | "Upcoming" | "Completed";
-
-type LeaderboardRow = {
-  rank: number;
-  name: string;
-  team: string;
-  points: number;
-};
-
-type Participant = {
-  name: string;
-  email: string;
-  team: string;
-  joined: string;
-};
-
-type Challenge = {
-  id: string;
-  title: string;
-  code: string;
-  startDate: string;
-  endDate: string;
-  category: string;
-  status: Status;
-  participantCount: number;
-  description: string;
-  leaderboard: LeaderboardRow[]; // empty until the challenge starts
-  participants: Participant[];
-};
-
-// Mock data for Demo 1. Keep in sync with challenges/page.tsx until the API is wired up.
-const challenges: Challenge[] = [
-  {
-    id: "1",
-    title: "Commuter Challenge",
-    code: "CC-F26",
-    startDate: "2026-10-01",
-    endDate: "2026-10-31",
-    category: "Transportation",
-    status: "Active",
-    participantCount: 84,
-    description: "Encourage biking, walking, transit, and carpooling instead of driving solo to campus.",
-    leaderboard: [
-      { rank: 1, name: "Ebin Thomas", team: "Pedal Pushers", points: 1240 },
-      { rank: 2, name: "Anna Mary", team: "Bus Buddies", points: 1105 },
-      { rank: 3, name: "Uyen Thy", team: "Pedal Pushers", points: 990 },
-      { rank: 4, name: "Eyoel Woldehawariat", team: "Carpool Crew", points: 870 },
-    ],
-    participants: [
-      { name: "Ebin Thomas", email: "example@email.com", team: "Pedal Pushers", joined: "2026-09-28" },
-      { name: "Anna Mary", email: "example@email.com", team: "Bus Buddies", joined: "2026-09-29" },
-      { name: "Uyen Thy", email: "example@email.com", team: "Pedal Pushers", joined: "2026-09-30" },
-      { name: "Eyoel Woldehawariat", email: "example@email.com", team: "Carpool Crew", joined: "2026-10-01" },
-    ],
-  },
-  {
-    id: "2",
-    title: "Energy Saver Sprint",
-    code: "ES-F26",
-    startDate: "2026-11-02",
-    endDate: "2026-11-09",
-    category: "Energy",
-    status: "Upcoming",
-    participantCount: 26,
-    description: "Cut electricity use with lights-off, unplugging, and cold-wash habits for one week.",
-    leaderboard: [],
-    participants: [
-      { name: "Anna Mary", email: "example@email.com", team: "Watt Watchers", joined: "2026-10-08" },
-      { name: "Eyoel Woldehawariat", email: "example@email.com", team: "Unplugged", joined: "2026-10-10" },
-      { name: "Uyen Thy", email: "example@email.com", team: "Watt Watchers", joined: "2026-10-12" },
-    ],
-  },
-  {
-    id: "3",
-    title: "Zero Waste Week",
-    code: "ZW-S26",
-    startDate: "2026-04-13",
-    endDate: "2026-04-19",
-    category: "Waste",
-    status: "Completed",
-    participantCount: 112,
-    description: "Minimize landfill waste through reusables, composting, and recycling.",
-    leaderboard: [
-      { rank: 1, name: "Uyen Thy", team: "Compost Kings", points: 1480 },
-      { rank: 2, name: "Eyoel Woldehawariat", team: "Reuse Revolution", points: 1320 },
-      { rank: 3, name: "Anna Mary", team: "Compost Kings", points: 1190 },
-      { rank: 4, name: "Ebin Thomas", team: "Bin There", points: 1045 },
-    ],
-    participants: [
-      { name: "Uyen Thy", email: "example@email.com", team: "Compost Kings", joined: "2026-04-06" },
-      { name: "Eyoel Woldehawariat", email: "example@email.com", team: "Reuse Revolution", joined: "2026-04-07" },
-      { name: "Anna Mary", email: "example@email.com", team: "Compost Kings", joined: "2026-04-08" },
-      { name: "Ebin Thomas", email: "example@email.com", team: "Bin There", joined: "2026-04-10" },
-    ],
-  },
-];
-
-// Badge colors per status. Must match challenges/page.tsx.
-const badgeStyles: Record<Status, string> = {
-  Active: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
-  Upcoming: "bg-blue-50 text-blue-700 ring-blue-600/20",
-  Completed: "bg-slate-100 text-slate-600 ring-slate-500/20",
-};
+import { getMockChallenge, BADGE_STYLES } from "../mock-data";
 
 // In Next.js 15, params is a Promise and must be awaited.
 type ChallengeDetailPageProps = {
@@ -116,16 +13,14 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
   const urlParams = await props.params;
   const id = urlParams.id;
 
-  const challenge = challenges.find((c) => {
-    return c.id === id;
-  });
+  const challenge = getMockChallenge(id);
 
   // Unknown id (e.g. /challenges/99) → 404 page.
   if (!challenge) {
     notFound();
   }
 
-  const badgeColor = badgeStyles[challenge.status];
+  const badgeColor = BADGE_STYLES[challenge.status];
   const badgeClass = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset " + badgeColor;
   const dateRange = challenge.startDate + " - " + challenge.endDate;
   const participantCountText = String(challenge.participantCount);

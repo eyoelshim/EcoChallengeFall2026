@@ -65,7 +65,6 @@ export default function TemplatesPage() {
           const Icon = template.icon;
           const iconBoxClass = "w-10 h-10 flex items-center justify-center rounded-lg " + template.iconColor;
           const details = template.category + " · " + template.duration;
-          // Note: the form doesn't read ?template= yet, so it opens empty.
           const useTemplateLink = "/admin/admin/challenges/new?template=" + template.id;
 
           // flex-col + flex-1 on the description keeps every button at the card's bottom.
