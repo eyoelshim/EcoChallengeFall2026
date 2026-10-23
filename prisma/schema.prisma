@@ -8,36 +8,59 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  clerkId        String          @unique
-  name           String
-  email          String          @unique
-  department     String?
-  onboarded      Boolean         @default(false)
-  streak         Int             @default(0)
-  lastActionDate DateTime?
-  challenges     UserChallenge[]
-  teams          TeamMember[]
-  actions        Action[]
-  teamRequests   TeamRequest[]   @relation("RequestedBy")
-  reviewedRequests TeamRequest[] @relation("ReviewedBy")
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  clerkId          String          @unique
+  name             String
+  email            String          @unique
+  // Legacy free-text department from onboarding; kept on the original column so no data is lost
+  departmentName   String?         @map("department")
+  departmentId     String?
+  department       Department?     @relation(fields: [departmentId], references: [id])
+  role             UserRole        @default(GENERAL_USER)
+  status           UserStatus      @default(ACTIVE)
+  onboarded        Boolean         @default(false)
+  streak           Int             @default(0)
+  lastActionDate   DateTime?
+  challenges       UserChallenge[]
+  teams            TeamMember[]
+  actions          Action[]
+  teamRequests     TeamRequest[]   @relation("RequestedBy")
+  reviewedRequests TeamRequest[]   @relation("ReviewedBy")
+  activityLogs     ActivityLog[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+}
+
+model Department {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  description String?
+  users       User[]
+  challenges  Challenge[]
+  createdAt   DateTime    @default(now())
 }
 
 model Challenge {
-  id          String          @id @default(cuid())
-  name        String
-  code        String          @unique
-  isTeamBased Boolean         @default(false)
-  startDate   DateTime?
-  endDate     DateTime?
-  users       UserChallenge[]
-  teams       Team[]
-  actions     Action[]
-  teamRequests TeamRequest[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id               String            @id @default(cuid())
+  name             String
+  code             String            @unique
+  isTeamBased      Boolean           @default(false)
+  startDate        DateTime?
+  endDate          DateTime?
+  description      String?
+  category         String?
+  status           ChallengeStatus   @default(UPCOMING)
+  themeColor       String?           @default("#10B981")
+  createdBy        String?
+  departmentId     String?
+  department       Department?       @relation(fields: [departmentId], references: [id])
+  users            UserChallenge[]
+  teams            Team[]
+  actions          Action[]
+  teamRequests     TeamRequest[]
+  challengeActions ChallengeAction[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 }
 
 model UserChallenge {
@@ -53,7 +76,7 @@ model UserChallenge {
 
 model Team {
   id          String       @id @default(cuid())
-  name        String       // Removed @unique since teams might have same name across challenges
+  name        String // Removed @unique since teams might have same name across challenges
   challengeId String?
   challenge   Challenge?   @relation(fields: [challengeId], references: [id])
   members     TeamMember[]
@@ -105,12 +128,72 @@ model TeamRequest {
   @@index([challengeId, status])
 }
 
+// Global catalog of actions admins can attach to challenges
+model ActionCatalog {
+  id               String            @id @default(cuid())
+  title            String
+  description      String?
+  category         ActionCategory
+  points           Int               @default(10)
+  challengeActions ChallengeAction[]
+  createdAt        DateTime          @default(now())
+}
+
+model ChallengeAction {
+  id              String        @id @default(cuid())
+  challengeId     String
+  actionCatalogId String
+  challenge       Challenge     @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  actionCatalog   ActionCatalog @relation(fields: [actionCatalogId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, actionCatalogId])
+}
+
+model ChallengeTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  categories  String[]
+  themeColor  String?  @default("#10B981")
+  actions     Json?
+  createdAt   DateTime @default(now())
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  details   String?
+  timestamp DateTime @default(now())
+
+  @@index([userId])
+}
+
 enum ActionCategory {
   TRANSPORT
   WATER
   ENERGY
   RECYCLING
   FOOD
+}
+
+enum UserRole {
+  SUPERADMIN
+  ADMIN
+  GENERAL_USER
+}
+
+enum UserStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+enum ChallengeStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+  ARCHIVED
 }
 
 enum TeamRequestStatus {

@@ -330,7 +330,7 @@ async function main() {
         onboarded: true,
         streak,
         lastActionDate: latest?.createdAt ?? null,
-        department: profile?.department ?? pick(DEPARTMENTS),
+        departmentName: profile?.department ?? pick(DEPARTMENTS),
       },
     });
     console.log(`  ${user.name.padEnd(6)} | streak: ${streak} days | dept: ${profile?.department ?? "—"}`);

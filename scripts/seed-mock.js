@@ -204,7 +204,7 @@ async function main() {
         onboarded: true,
         streak,
         lastActionDate: latest?.createdAt ?? null,
-        department: user.department ?? pick(["Engineering", "Marketing", "Operations", "HR", "Finance"]),
+        departmentName: user.departmentName ?? pick(["Engineering", "Marketing", "Operations", "HR", "Finance"]),
       },
     });
     console.log(`  ${user.name}: streak=${streak}, onboarded=true`);
