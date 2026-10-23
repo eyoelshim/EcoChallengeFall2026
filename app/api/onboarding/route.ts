@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       where: { id: user.id },
       data: {
         onboarded: true,
-        department: department || null,
+        departmentName: department || null,
       },
     });
 
