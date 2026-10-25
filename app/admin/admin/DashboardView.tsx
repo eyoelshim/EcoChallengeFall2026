@@ -201,8 +201,8 @@ export default function DashboardView({ telemetry }: { telemetry: DashboardTelem
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Live Recent Activity Feed (7 cols) */}
         <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col">
-          <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-            <div>
+          <div className="p-5 border-b border-slate-100 flex items-center justify-between gap-4">
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-slate-900">Live Recent Activity Feed</h2>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
@@ -213,9 +213,9 @@ export default function DashboardView({ telemetry }: { telemetry: DashboardTelem
             </div>
             <Link
               href="/admin/admin/reports"
-              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1"
+              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1 whitespace-nowrap shrink-0"
             >
-              View Full Report
+              <span>View Full Report</span>
               <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
