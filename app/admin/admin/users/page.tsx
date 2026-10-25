@@ -2,8 +2,26 @@ import React from "react";
 import Link from "next/link";
 import { UserPlus } from "lucide-react";
 import UsersTable from "./UsersTable";
+import { getAdminUsers } from "@/app/actions/admin-users";
 
-export default function AdminUsersPage() {
+export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
+
+function param(value: string | string[] | undefined) {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+export default async function AdminUsersPage({ searchParams }: { searchParams: SearchParams }) {
+  const sp = await searchParams;
+  const filters = {
+    role: param(sp.role),
+    status: param(sp.status),
+    department: param(sp.department),
+    search: param(sp.search),
+  };
+  const data = await getAdminUsers(filters);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -24,7 +42,7 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      <UsersTable />
+      <UsersTable data={data} filters={filters} />
     </div>
   );
 }

@@ -1,129 +1,93 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Search, Download, Eye, UserCheck, UserX, Building2 } from "lucide-react";
+import type { UserRole, UserStatus } from "@prisma/client";
+import { updateUserStatus, type getAdminUsers } from "@/app/actions/admin-users";
+import { downloadCsv } from "@/lib/csv";
 import {
-  Search,
-  Flame,
-  Download,
-  Eye,
-  Pencil,
-  UserCheck,
-  UserX,
-  Trash2,
-  AlertTriangle,
-  Users as UsersIcon,
-} from "lucide-react";
-import {
-  MOCK_GROUPS,
+  ROLE_OPTIONS,
+  STATUS_OPTIONS,
+  ROLE_LABELS,
+  STATUS_LABELS,
   ROLE_BADGE_STYLES,
   STATUS_BADGE_STYLES,
-  ROLES,
-  USER_STATUSES,
-  type Role,
-  type UserStatus,
-  type MockUser,
-  getMockUsers,
-  toggleMockUserStatus,
-  deleteMockUser,
-  downloadCsv,
-} from "./mock-data";
+  formatDate,
+  initials,
+} from "./user-display";
 
-type RoleFilter = "All" | Role;
-type StatusFilter = "All" | UserStatus;
+type AdminUsersData = Awaited<ReturnType<typeof getAdminUsers>>;
+type AdminUserRow = AdminUsersData["users"][number];
 
-export default function UsersTable() {
-  const [users, setUsers] = useState<MockUser[]>([]);
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<RoleFilter>("All");
-  const [groupFilter, setGroupFilter] = useState<string>("All");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
+type Filters = {
+  role?: string;
+  status?: string;
+  department?: string;
+  search?: string;
+};
 
-  // Confirmation modal states
-  const [statusModalUser, setStatusModalUser] = useState<MockUser | null>(null);
-  const [deleteModalUser, setDeleteModalUser] = useState<MockUser | null>(null);
+export default function UsersTable({ data, filters }: { data: AdminUsersData; filters: Filters }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
+  const [search, setSearch] = useState(filters.search ?? "");
 
-  // Sync users on mount
+  // Confirmation modal state
+  const [statusModalUser, setStatusModalUser] = useState<AdminUserRow | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [isSaving, startSaving] = useTransition();
+
+  const { users, departments, roleCounts, statusCounts, total } = data;
+
+  const setParam = (key: keyof Filters, value: string | undefined) => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (value) next.set(key, value);
+    else next.delete(key);
+    const qs = next.toString();
+    startTransition(() => router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
+  };
+
+  // Debounce search so we don't query on every keystroke
   useEffect(() => {
-    setUsers(getMockUsers());
-  }, []);
-
-  const roleCounts = useMemo(() => {
-    const counts: Record<RoleFilter, number> = {
-      All: users.length,
-      SuperAdmin: 0,
-      Admin: 0,
-      GeneralUser: 0,
-    };
-    for (const u of users) {
-      if (counts[u.role] !== undefined) counts[u.role] += 1;
-    }
-    return counts;
-  }, [users]);
-
-  const statusCounts = useMemo(() => {
-    const counts: Record<StatusFilter, number> = {
-      All: users.length,
-      Active: 0,
-      Deactivated: 0,
-    };
-    for (const u of users) {
-      if (counts[u.status] !== undefined) counts[u.status] += 1;
-    }
-    return counts;
-  }, [users]);
-
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return users.filter((user) => {
-      const matchesRole = roleFilter === "All" || user.role === roleFilter;
-      const matchesGroup =
-        groupFilter === "All" ||
-        (groupFilter === "none" && !user.groupId) ||
-        user.groupId === groupFilter;
-      const matchesStatus = statusFilter === "All" || user.status === statusFilter;
-      const matchesSearch =
-        !query ||
-        user.name.toLowerCase().includes(query) ||
-        user.email.toLowerCase().includes(query) ||
-        user.department.toLowerCase().includes(query) ||
-        (user.groupName && user.groupName.toLowerCase().includes(query));
-      return matchesRole && matchesGroup && matchesStatus && matchesSearch;
-    });
-  }, [users, search, roleFilter, groupFilter, statusFilter]);
+    const trimmed = search.trim();
+    if (trimmed === (filters.search ?? "")) return;
+    const timer = setTimeout(() => setParam("search", trimmed || undefined), 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const handleExportCsv = () => {
-    const exportRows = filtered.map((u) => ({
+    const exportRows = users.map((u) => ({
       ID: u.id,
       Name: u.name,
       Email: u.email,
-      Department: u.department,
-      Group: u.groupName || "None",
-      Role: u.role,
-      Status: u.status,
-      Streak: `${u.streak} days`,
+      Department: u.department ?? "",
+      Role: ROLE_LABELS[u.role],
+      Status: STATUS_LABELS[u.status],
+      TotalPoints: u.totalPoints,
       ActionsLogged: u.actionsLogged,
-      Points: u.points,
-      JoinedAt: u.joinedAt,
-      LastActive: u.lastActive,
+      Streak: `${u.streak} days`,
+      JoinedAt: formatDate(u.joinedAt),
     }));
     downloadCsv("greenstep_users.csv", exportRows);
   };
 
   const confirmToggleStatus = () => {
     if (!statusModalUser) return;
-    const updated = toggleMockUserStatus(statusModalUser.id);
-    if (updated) {
-      setUsers(getMockUsers());
-    }
-    setStatusModalUser(null);
-  };
-
-  const confirmDeleteUser = () => {
-    if (!deleteModalUser) return;
-    deleteMockUser(deleteModalUser.id);
-    setUsers(getMockUsers());
-    setDeleteModalUser(null);
+    const nextStatus: UserStatus = statusModalUser.status === "ACTIVE" ? "DEACTIVATED" : "ACTIVE";
+    setStatusError(null);
+    startSaving(async () => {
+      const result = await updateUserStatus(statusModalUser.id, nextStatus);
+      if (result.error) {
+        setStatusError(result.error);
+        return;
+      }
+      setStatusModalUser(null);
+      router.refresh();
+    });
   };
 
   return (
@@ -138,28 +102,27 @@ export default function UsersTable() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, email, department, group..."
+              placeholder="Search name, email, department..."
               aria-label="Search users"
               className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
             />
           </div>
 
-          {/* Group and CSV Export Controls */}
+          {/* Department and CSV Export Controls */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* Group Filter */}
+            {/* Department Filter */}
             <div className="flex items-center gap-2">
-              <UsersIcon className="w-4 h-4 text-slate-400 hidden sm:block" />
+              <Building2 className="w-4 h-4 text-slate-400 hidden sm:block" />
               <select
-                value={groupFilter}
-                onChange={(e) => setGroupFilter(e.target.value)}
-                aria-label="Filter by group"
+                value={filters.department ?? ""}
+                onChange={(e) => setParam("department", e.target.value || undefined)}
+                aria-label="Filter by department"
                 className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
               >
-                <option value="All">All Groups / Teams</option>
-                <option value="none">No Group Assigned</option>
-                {MOCK_GROUPS.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
+                <option value="">All Departments</option>
+                {departments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
                   </option>
                 ))}
               </select>
@@ -169,7 +132,8 @@ export default function UsersTable() {
             <button
               type="button"
               onClick={handleExportCsv}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors shadow-sm"
+              disabled={users.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
             >
               <Download className="w-4 h-4 text-slate-500" />
               Export CSV
@@ -182,24 +146,24 @@ export default function UsersTable() {
           {/* Role Filter Tabs */}
           <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Filter by role">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-1">Role:</span>
-            {(["All", ...ROLES] as RoleFilter[]).map((role) => {
-              const active = roleFilter === role;
+            {([undefined, ...ROLE_OPTIONS] as (UserRole | undefined)[]).map((role) => {
+              const active = (filters.role ?? undefined) === role;
               return (
                 <button
-                  key={role}
+                  key={role ?? "all"}
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setRoleFilter(role)}
+                  onClick={() => setParam("role", role)}
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
                     active
                       ? "bg-slate-900 text-white border-slate-900 shadow-xs"
                       : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                   }`}
                 >
-                  {role}
+                  {role ? ROLE_LABELS[role] : "All"}
                   <span className={`text-[11px] ${active ? "text-slate-300" : "text-slate-400"}`}>
-                    {roleCounts[role]}
+                    {role ? roleCounts[role] : total}
                   </span>
                 </button>
               );
@@ -209,28 +173,28 @@ export default function UsersTable() {
           {/* Status Filter Tabs */}
           <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Filter by status">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-1">Status:</span>
-            {(["All", ...USER_STATUSES] as StatusFilter[]).map((st) => {
-              const active = statusFilter === st;
+            {([undefined, ...STATUS_OPTIONS] as (UserStatus | undefined)[]).map((st) => {
+              const active = (filters.status ?? undefined) === st;
               return (
                 <button
-                  key={st}
+                  key={st ?? "all"}
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setStatusFilter(st)}
+                  onClick={() => setParam("status", st)}
                   className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
                     active
-                      ? st === "Active"
+                      ? st === "ACTIVE"
                         ? "bg-emerald-700 text-white border-emerald-700"
-                        : st === "Deactivated"
+                        : st === "DEACTIVATED"
                         ? "bg-rose-700 text-white border-rose-700"
                         : "bg-slate-900 text-white border-slate-900"
                       : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                   }`}
                 >
-                  {st}
+                  {st ? STATUS_LABELS[st] : "All"}
                   <span className={`text-[11px] ${active ? "text-white/80" : "text-slate-400"}`}>
-                    {statusCounts[st]}
+                    {st ? statusCounts[st] : total}
                   </span>
                 </button>
               );
@@ -240,27 +204,27 @@ export default function UsersTable() {
       </div>
 
       {/* Users Data Table */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
+      <div
+        className={`bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto transition-opacity ${
+          isPending ? "opacity-60" : ""
+        }`}
+      >
         <table className="w-full min-w-[960px] text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <th className="px-5 py-3">Name</th>
               <th className="px-5 py-3">Email</th>
               <th className="px-5 py-3">Department</th>
-              <th className="px-5 py-3">Group / Team</th>
               <th className="px-5 py-3">Role</th>
               <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3 text-right">Streak</th>
-              <th className="px-5 py-3 text-right">Actions</th>
+              <th className="px-5 py-3 text-right">Total Points</th>
+              <th className="px-5 py-3">Joined</th>
               <th className="px-5 py-3 text-center">Manage</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtered.map((user) => (
-              <tr
-                key={user.id}
-                className="hover:bg-slate-50/80 transition-colors"
-              >
+            {users.map((user) => (
+              <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
                 {/* Name */}
                 <td className="px-5 py-3.5">
                   <Link
@@ -268,10 +232,7 @@ export default function UsersTable() {
                     className="flex items-center gap-3 group focus:outline-none"
                   >
                     <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-semibold shrink-0 group-hover:ring-2 group-hover:ring-emerald-500/40">
-                      {user.name
-                        .split(" ")
-                        .map((part) => part[0])
-                        .join("")}
+                      {initials(user.name)}
                     </div>
                     <span className="font-medium text-slate-900 group-hover:text-emerald-700 transition-colors">
                       {user.name}
@@ -283,17 +244,8 @@ export default function UsersTable() {
                 <td className="px-5 py-3.5 text-slate-600">{user.email}</td>
 
                 {/* Department */}
-                <td className="px-5 py-3.5 text-slate-600">{user.department}</td>
-
-                {/* Group / Team */}
-                <td className="px-5 py-3.5">
-                  {user.groupName ? (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                      {user.groupName}
-                    </span>
-                  ) : (
-                    <span className="text-slate-400 text-xs italic">— None —</span>
-                  )}
+                <td className="px-5 py-3.5 text-slate-600">
+                  {user.department ?? <span className="text-slate-400 text-xs italic">— None —</span>}
                 </td>
 
                 {/* Role */}
@@ -301,7 +253,7 @@ export default function UsersTable() {
                   <span
                     className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${ROLE_BADGE_STYLES[user.role]}`}
                   >
-                    {user.role}
+                    {ROLE_LABELS[user.role]}
                   </span>
                 </td>
 
@@ -310,22 +262,17 @@ export default function UsersTable() {
                   <span
                     className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${STATUS_BADGE_STYLES[user.status]}`}
                   >
-                    {user.status}
+                    {STATUS_LABELS[user.status]}
                   </span>
                 </td>
 
-                {/* Streak */}
-                <td className="px-5 py-3.5 text-right">
-                  <span className="inline-flex items-center gap-1 text-slate-700">
-                    <Flame className={`w-4 h-4 ${user.streak > 0 ? "text-orange-500" : "text-slate-300"}`} />
-                    {user.streak}d
-                  </span>
-                </td>
-
-                {/* Actions Logged */}
+                {/* Total Points */}
                 <td className="px-5 py-3.5 text-right font-medium text-slate-900">
-                  {user.actionsLogged}
+                  {user.totalPoints.toLocaleString()}
                 </td>
+
+                {/* Join Date */}
+                <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">{formatDate(user.joinedAt)}</td>
 
                 {/* Row Action Buttons */}
                 <td className="px-5 py-3.5 text-center">
@@ -339,50 +286,30 @@ export default function UsersTable() {
                       <Eye className="w-4 h-4" />
                     </Link>
 
-                    {/* Edit User */}
-                    <Link
-                      href={`/admin/admin/users/${user.id}/edit`}
-                      title="Edit User"
-                      className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Link>
-
                     {/* Activate / Deactivate Toggle */}
                     <button
                       type="button"
-                      title={user.status === "Active" ? "Deactivate User" : "Activate User"}
-                      onClick={() => setStatusModalUser(user)}
+                      title={user.status === "ACTIVE" ? "Deactivate User" : "Activate User"}
+                      onClick={() => {
+                        setStatusError(null);
+                        setStatusModalUser(user);
+                      }}
                       className={`p-1.5 rounded-lg transition-colors ${
-                        user.status === "Active"
+                        user.status === "ACTIVE"
                           ? "text-slate-400 hover:text-amber-700 hover:bg-amber-50"
                           : "text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50"
                       }`}
                     >
-                      {user.status === "Active" ? (
-                        <UserX className="w-4 h-4" />
-                      ) : (
-                        <UserCheck className="w-4 h-4" />
-                      )}
-                    </button>
-
-                    {/* Permanent Delete */}
-                    <button
-                      type="button"
-                      title="Permanently Delete User"
-                      onClick={() => setDeleteModalUser(user)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
+                      {user.status === "ACTIVE" ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
                     </button>
                   </div>
                 </td>
               </tr>
             ))}
 
-            {filtered.length === 0 && (
+            {users.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-5 py-12 text-center text-slate-500">
+                <td colSpan={8} className="px-5 py-12 text-center text-slate-500">
                   No participants match your search and filter criteria.
                 </td>
               </tr>
@@ -393,9 +320,9 @@ export default function UsersTable() {
 
       <div className="flex items-center justify-between text-xs text-slate-400 px-1">
         <p>
-          Showing {filtered.length} of {users.length} participants
+          Showing {users.length} of {total} participants
         </p>
-        <p>Interactive Mock Engine · Full Parity with Admin App</p>
+        <p>Live data · Neon PostgreSQL</p>
       </div>
 
       {/* ── Status Confirmation Modal ── */}
@@ -409,12 +336,12 @@ export default function UsersTable() {
             <div className="flex items-center gap-3">
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                  statusModalUser.status === "Active"
+                  statusModalUser.status === "ACTIVE"
                     ? "bg-amber-100 text-amber-600"
                     : "bg-emerald-100 text-emerald-600"
                 }`}
               >
-                {statusModalUser.status === "Active" ? (
+                {statusModalUser.status === "ACTIVE" ? (
                   <UserX className="w-5 h-5" />
                 ) : (
                   <UserCheck className="w-5 h-5" />
@@ -422,12 +349,12 @@ export default function UsersTable() {
               </div>
               <div>
                 <h3 className="text-base font-semibold text-slate-900">
-                  {statusModalUser.status === "Active" ? "Deactivate User" : "Activate User"}
+                  {statusModalUser.status === "ACTIVE" ? "Deactivate User" : "Activate User"}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {statusModalUser.status === "Active"
-                    ? "Temporarily revoke console and platform access"
-                    : "Restore participant account access"}
+                  {statusModalUser.status === "ACTIVE"
+                    ? "Mark this account as deactivated"
+                    : "Restore this account to active"}
                 </p>
               </div>
             </div>
@@ -435,18 +362,22 @@ export default function UsersTable() {
             <p className="text-sm text-slate-600 leading-relaxed">
               Are you sure you want to{" "}
               <strong className="text-slate-900">
-                {statusModalUser.status === "Active" ? "deactivate" : "activate"}
+                {statusModalUser.status === "ACTIVE" ? "deactivate" : "activate"}
               </strong>{" "}
-              <span className="font-medium text-slate-900">{statusModalUser.name}</span> (
-              {statusModalUser.email})?
-              {statusModalUser.status === "Active" &&
-                " They will no longer be able to log actions or participate until reactivated."}
+              <span className="font-medium text-slate-900">{statusModalUser.name}</span> ({statusModalUser.email})?
             </p>
+
+            {statusError && (
+              <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                {statusError}
+              </p>
+            )}
 
             <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setStatusModalUser(null)}
+                disabled={isSaving}
                 className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
               >
                 Cancel
@@ -454,58 +385,14 @@ export default function UsersTable() {
               <button
                 type="button"
                 onClick={confirmToggleStatus}
-                className={`px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors shadow-sm ${
-                  statusModalUser.status === "Active"
+                disabled={isSaving}
+                className={`px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors shadow-sm disabled:opacity-60 ${
+                  statusModalUser.status === "ACTIVE"
                     ? "bg-amber-600 hover:bg-amber-700"
                     : "bg-emerald-600 hover:bg-emerald-700"
                 }`}
               >
-                {statusModalUser.status === "Active" ? "Deactivate" : "Activate"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Permanent Delete Modal ── */}
-      {deleteModalUser && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs px-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">Permanently delete user?</h3>
-                <p className="text-xs text-rose-600 font-medium">This action cannot be undone</p>
-              </div>
-            </div>
-
-            <p className="text-sm text-slate-600 leading-relaxed">
-              This will permanently delete{" "}
-              <strong className="text-slate-900">{deleteModalUser.name}</strong> (
-              {deleteModalUser.email}), their credentials, all logged action completions, and their
-              activity log. Prefer <em>Deactivate</em> if you only need to block sign-in.
-            </p>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeleteModalUser(null)}
-                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmDeleteUser}
-                className="px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-medium hover:bg-rose-700 transition-colors shadow-sm"
-              >
-                Delete Permanently
+                {isSaving ? "Saving..." : statusModalUser.status === "ACTIVE" ? "Deactivate" : "Activate"}
               </button>
             </div>
           </div>
