@@ -1,12 +1,10 @@
 # GreenStep — Employee Sustainability Challenge
 
-A gamified web app that replaces manual, spreadsheet-based sustainability
-tracking with a fast, team-based digital platform. Employees log sustainable
-actions, earn points and badges, build daily streaks, and compete on live team
-and individual leaderboards during challenges such as Earth Month.
+A gamified web platform that replaces manual, spreadsheet-based sustainability tracking with a fast, team-based digital experience. Employees log sustainable actions, earn points and badges, build daily streaks, and compete on live team and individual leaderboards during challenges such as Earth Month.
 
-Built as a CISC480 Senior Capstone project (Spring 2026) for community partner
-Minnesota GreenStep.
+Minnesota GreenStep Cities and the Minnesota Pollution Control Agency (MPCA) staff use the integrated **Administrative Management Console** to create and manage challenges, configure custom action catalogs, review team requests, oversee participants with role-based access control, and generate audit-ready compliance reports.
+
+Built as a CISC480 Senior Capstone project (Spring 2026) for community partner **Minnesota GreenStep**.
 
 ---
 
@@ -14,14 +12,13 @@ Minnesota GreenStep.
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 15 (App Router, TypeScript) |
-| Styling | Tailwind CSS v3 |
-| Auth | Clerk (`@clerk/nextjs` v6) |
-| ORM | Prisma v6 |
-| Database | PostgreSQL (Neon) |
-| Charts | Recharts |
-| Icons | lucide-react |
-| Hosting | Vercel |
+| **Framework** | Next.js 15 (App Router, TypeScript, React 19) |
+| **Styling** | Tailwind CSS v3 |
+| **Authentication** | Clerk (`@clerk/nextjs` v6 / Core 3) with Role-Based Access Control |
+| **Database & ORM** | PostgreSQL (Neon serverless) + Prisma ORM v6 |
+| **Data Visualizations** | Recharts v3 |
+| **Icons & Assets** | lucide-react |
+| **Hosting & Deploy** | Vercel |
 
 ---
 
@@ -34,99 +31,214 @@ app/
     sign-up/[[...sign-up]]/page.tsx     # Clerk sign-up
   (dashboard)/
     dashboard/page.tsx                  # Server: syncs Clerk user -> DB
-    dashboard/DashboardClient.tsx       # Main dashboard UI (tabs, charts, modals)
-    admin/page.tsx                      # Admin: challenges, team requests, export
+    dashboard/DashboardClient.tsx       # Participant dashboard (tabs, charts, modals)
     log-action/page.tsx                 # Browse/search actions to log
     log-action/[actionType]/page.tsx    # Log a specific action (note/photo bonus)
     onboarding/page.tsx                 # First-run onboarding flow
-  actions/challenge.ts                  # Server actions: create/join challenge
+  admin/                                # Dedicated Admin Console root
+    layout.tsx                          # Admin shell: AdminSidebar, AdminTopBar, route guards
+    unauthorized/page.tsx               # Access denied notice for non-admin accounts
+    admin/                              # Primary Admin routes
+      page.tsx                          # Master Admin Dashboard (live Neon telemetry)
+      DashboardView.tsx                 # Dashboard KPI widgets & live activity stream
+      dashboard-display.ts              # Category color tokens & relative time formatter
+      challenges/
+        page.tsx                        # Challenge directory with status filter tabs
+        new/page.tsx                    # Challenge creation with Template Quick-Start
+        [id]/page.tsx                   # Challenge detail: leaderboard, roster, actions
+        [id]/actions/page.tsx           # In-Challenge Action CRUD & point configuration
+      templates/
+        page.tsx                        # Reusable MPCA challenge templates directory
+      users/
+        page.tsx                        # User directory (search, role & status filters)
+        UsersTable.tsx                  # Interactive table with deactivation modal
+        new/page.tsx                    # User provisioning form
+        [id]/page.tsx                   # User detail & lifetime points history
+        [id]/UserDetail.tsx             # SuperAdmin role dropdown, streak, activity logs
+      groups/
+        page.tsx                        # Campus departments & pending team requests
+        new/page.tsx                    # Create campus department
+        [id]/page.tsx                   # Department detail & member roster
+      reports/
+        page.tsx                        # Cross-challenge reports, category chart & CSV
+  actions/
+    admin-dashboard.ts                  # Server Action: parallel telemetry via db.$transaction
+    admin-users.ts                      # Server Action: users CRUD, Clerk role sync & logs
+    challenge.ts                        # Server Action: participant create/join challenge
   api/
     actions/route.ts                    # Log + list actions, feeds, popular
     leaderboard/route.ts                # Team + individual leaderboards
     stats/route.ts                      # Performance chart data
     me/route.ts                         # Current-user summary
     onboarding/route.ts                 # Persist onboarding
-    export/csv/route.ts                 # Admin CSV export
+    export/csv/route.ts                 # CSV export endpoint
     challenge/leave/route.ts            # Leave a challenge
     team/{create,join,leave,list}/route.ts
     team/request/route.ts               # Create a team request
-    team/request/[requestId]/route.ts   # Approve/reject (admin)
+    team/request/[requestId]/route.ts   # Approve/reject team requests
   layout.tsx                            # Root layout (ClerkProvider)
   page.tsx                              # Landing page
-  error.tsx / not-found.tsx             # Error + 404 pages
-  globals.css
-components/                             # Shared UI components
+  error.tsx / not-found.tsx             # Error and 404 boundaries
+components/                             # Shared UI components & layout shells
 lib/
   db.ts                                 # Prisma client singleton
-  authz.ts                              # Admin check (Clerk publicMetadata)
-  constants.ts                          # GLOBAL_CHALLENGE_ID
-  global-challenge.ts                   # Ensures the global challenge exists
-  team-requests.ts                      # Team-request create/review logic
-  actions-data.ts                       # Catalog of loggable actions + points
-prisma/schema.prisma                    # Database schema
-scripts/                                # Dev seed scripts (seed-*.js)
-middleware.ts                           # Clerk route protection
+  authz.ts                              # Role helpers (SuperAdmin/Admin) & Clerk checks
+  csv.ts                                # RFC-4180 client-side CSV generator
+  constants.ts                          # Shared constants & global IDs
+prisma/schema.prisma                    # Unified database schema
+scripts/                                # Seeding and Clerk role sync utilities
+middleware.ts                           # Clerk edge route protection
 ```
+
+---
+
+## Admin Console — Migrated Features from Legacy System
+
+All administrative capabilities from the legacy GreenStep admin console (`sp26_team2_greenstepchallenge_admin`) have been modernized and unified into this Next.js 15 App Router platform with Neon PostgreSQL, replacing legacy Supabase and Material UI dependencies.
+
+### 1. Master Telemetry Dashboard (`/admin/admin`)
+- **Live Database Telemetry:** Replaced static mock values with live queries executed via parallel Prisma `db.$transaction` operations.
+- **Top KPI Cards:** Active Challenges count, Total Actions Logged, Active Participants count, and Total Points Earned with computed completion rates, average points per user, and estimated CO2 reductions.
+- **Top Contributors Leaderboard:** Displays top 5 participants sorted dynamically by aggregate points with medal rank badges and proportional progress tracks.
+- **Impact Categories Breakdown:** Visual volume distribution across all five official MPCA categories (`TRANSPORT`, `WATER`, `ENERGY`, `RECYCLING`, `FOOD`).
+- **Live Recent Activity Feed:** Real-time stream of the 10 most recent participant action submissions with clickable user links, challenge links, category tags, points badges, and relative timestamps (`just now`, `5m ago`, `2h ago`).
+- **Instant Telemetry Refresh:** Non-blocking refresh button powered by React `useTransition` and Next.js `router.refresh()`.
+- **Quick Action Shortcut Tiles:** Instant navigation to launch challenges, invite users, add departments, or view analytics reports.
+
+### 2. Challenge Management & In-Challenge Action CRUD
+- **Challenges Directory (`/admin/admin/challenges`):** Full table listing with search, category tags, and status filter tabs (`Active`, `Upcoming`, `Completed`).
+- **Challenge Detail View (`/admin/admin/challenges/[id]`):** Deep-dive overview card, participant count, date range, challenge leaderboard, participant roster, and configured actions summary.
+- **In-Challenge Action CRUD (`/admin/admin/challenges/[id]/actions`):**
+  - Admins can add custom sustainability actions specifically for a given challenge.
+  - Interactive Add/Edit modal dialog with fields for Action Title, Category, Point reward value, and logging instructions.
+  - Confirmation modal safeguards for deleting actions.
+  - Category filter pills (`All`, `Transportation`, `Energy`, `Waste`, `Food`, `Water`) and action search.
+  - Metrics displaying configured action count, total point pool, and primary domain.
+
+### 3. Challenge Templates (formerly "Presets")
+- **Templates Directory (`/admin/admin/templates`):** Reusable challenge sprint presets derived from historical MPCA client programs:
+  - *Sustainable Commute Week* (Transportation, 1 week, 4 actions, 130 pts)
+  - *H2O Hero Week* (Water Conservation, 1 week, 4 actions, 80 pts)
+  - *Power Down Challenge* (Energy Efficiency, 1 week, 4 actions, 70 pts)
+  - *Zero Waste Week* (Waste & Recycling, 1 week, 4 actions, 80 pts)
+  - *Sustainable Food Challenge* (Sustainable Food, 10 days, 4 actions, 85 pts)
+- **Collapsible Action Catalog Previews:** Inspect pre-bundled action items and point allocations before applying.
+- **Quick Start Integration (`/admin/admin/challenges/new`):**
+  - "Quick Start: Apply a Template" dropdown pre-populates challenge name, code, category, and description.
+  - Automatically calculates start and end dates based on preset duration.
+  - Displays a "Bundled Actions to Attach" preview card showing all staged actions.
+  - Staged actions are automatically created and linked to the challenge upon submission.
+
+### 4. User Directory & Role-Based Access Control (`/admin/admin/users`)
+- **Directory Table:** Searchable table with debounced search input (300ms), role filter tabs (`All`, `SuperAdmin`, `Admin`, `General User`), status filter (`Active`, `Deactivated`), and department dropdown.
+- **User Detail Profile (`/admin/admin/users/[id]`):** Summary card, lifetime points, current streak, actions logged, join date, per-challenge points history with progress bars, chronological action history, and team memberships.
+- **Two-Way Clerk Role Synchronization:**
+  - Role modifications by SuperAdmins update Clerk `publicMetadata.role` first; on success, a Prisma transaction updates `User.role` and creates an audit entry in `ActivityLog`.
+  - Self-demotion and self-deactivation protection prevents admins from locking themselves out.
+  - Environment variable fallback (`SUPERADMIN_EMAILS`) preserves root access regardless of database state.
+- **Account Deactivation:** Modal confirmation to deactivate or reactivate accounts, recorded in the activity log.
+- **Admin Activity Log:** Full audit trail tracking role and status mutations with actor attribution and timestamps.
+- **CSV Export:** Client-side CSV export of user participation history and admin audit logs.
+
+### 5. Group & Campus Department Management (`/admin/admin/groups`)
+- **Department Cards:** Displays campus departments with live member counts and linked challenge numbers.
+- **Department Detail (`/admin/admin/groups/[id]`):** View assigned participant rosters with links to individual profiles.
+- **Pending Team Request Reviews:** Table displaying pending team creation requests submitted by mobile and web participants with one-click "Approve" and "Reject" workflow that automatically provisions `Team` and `TeamMember` records upon approval.
+- **Create Department (`/admin/admin/groups/new`):** Add formal campus departments or organizational divisions.
+
+### 6. Reports & Audit Analytics (`/admin/admin/reports`)
+- **Interactive Analytics:** Filterable by challenge and date range.
+- **Category Engagement Chart:** Visual action volume breakdown rendered with Recharts.
+- **Full Participation Log Table:** Searchable table of action completions with clickable user and challenge links.
+- **Compliance CSV Export:** Generates RFC-4180 compliant CSV files with full participant, department, challenge, category, points, and timestamp metadata.
+
+---
+
+## Role Permissions Matrix
+
+Permissions are enforced on both the server (`lib/authz.ts`) and client:
+
+| Feature / Action | SuperAdmin | Admin | General User |
+|---|:---:|:---:|:---:|
+| **View Participant Dashboard & Leaderboard** | ✓ | ✓ | ✓ |
+| **Log Actions, Badges & Streaks** | ✓ | ✓ | ✓ |
+| **Access Admin Console (`/admin`)** | ✓ | ✓ | ✗ |
+| **View Admin Dashboard Telemetry** | ✓ | ✓ | ✗ |
+| **View Challenges List & Details** | ✓ | ✓ | ✗ |
+| **Create / Edit Challenges** | ✓ | ✓ | ✗ |
+| **Manage In-Challenge Actions (CRUD)** | ✓ | ✓ | ✗ |
+| **View & Apply Challenge Templates** | ✓ | ✓ | ✗ |
+| **View Campus Departments & Rosters** | ✓ | ✓ | ✗ |
+| **Approve / Reject Team Requests** | ✓ | ✓ | ✗ |
+| **View Users Directory & Profiles** | ✓ | ✓ | ✗ |
+| **Deactivate / Reactivate Users** | ✓ | ✓ | ✗ |
+| **Change User Roles (SuperAdmin/Admin)** | ✓ | ✗ | ✗ |
+| **View Reports & Export CSVs** | ✓ | ✓ | ✗ |
+
+---
+
+## Unified Data Model (Neon PostgreSQL)
+
+The unified Prisma schema reconciles participant tracking with administrative governance models:
+
+- **User** — `clerkId`, `name`, `email`, `departmentName` (legacy mapped), `departmentId`, `role` (`SUPERADMIN`, `ADMIN`, `GENERAL_USER`), `status` (`ACTIVE`, `DEACTIVATED`), `streak`, `lastActionDate`, `onboarded`
+- **Department** — `id`, `name` (unique), `description`, relations to `User[]` and `Challenge[]`
+- **Challenge** — `id`, `name`, `code` (unique), `description`, `category`, `status` (`UPCOMING`, `ACTIVE`, `COMPLETED`, `ARCHIVED`), `startDate`, `endDate`, `themeColor`, `createdBy`, `departmentId`, relations to `UserChallenge[]`, `Team[]`, `Action[]`, `ChallengeAction[]`
+- **Action** — `userId`, `challengeId`, `category` (`TRANSPORT`, `WATER`, `ENERGY`, `RECYCLING`, `FOOD`), `actionType`, `points`, `note`, `imageUrl`, `date`, `createdAt`
+- **ActionCatalog** — Global action library: `id`, `title`, `description`, `category`, `points`, relations to `ChallengeAction[]`
+- **ChallengeAction** — Join table linking catalog actions to challenges with cascade delete
+- **ChallengeTemplate** — Reusable sprint presets: `id`, `name`, `description`, `categories[]`, `themeColor`, `actions` (JSON bundle)
+- **ActivityLog** — Admin audit trail: `id`, `userId` (set null on delete), `action`, `details`, `timestamp`
+- **Team** & **TeamMember** — Team competition units and membership join table
+- **TeamRequest** — Team creation requests with `PENDING`, `APPROVED`, `REJECTED` status
 
 ---
 
 ## Getting Started
 
-### 1. Clone
+### 1. Clone & Install
 
 ```bash
-git clone https://github.com/nagbemadon/GreenStepEmployee.git
-cd GreenStepEmployee
-```
-
-### 2. Install dependencies
-
-```bash
+git clone https://github.com/eyoelshim/EcoChallengeFall2026.git
+cd EcoChallengeFall2026
 npm install
 ```
 
-### 3. Set up environment variables
+### 2. Environment Configuration
+
+Copy the example environment template:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Fill `.env.local` with real values (ask a team member, or use your own Clerk +
-Neon accounts):
+Fill `.env.local` with your credentials:
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` & `CLERK_SECRET_KEY` — from [Clerk Dashboard](https://dashboard.clerk.com)
+- `DATABASE_URL` — Neon PostgreSQL connection string (`postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require`)
+- `SUPERADMIN_EMAILS` — Comma-separated list of emails that are granted root SuperAdmin access (e.g. `kristin.mroz@mpca.mn.gov,admin@stthomas.edu`)
 
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` — from
-  [dashboard.clerk.com](https://dashboard.clerk.com)
-- `DATABASE_URL` — your Neon (or other) PostgreSQL connection string
-
-### 4. Generate the Prisma client and push the schema
+### 3. Synchronize Database & Generate Client
 
 ```bash
 npm run db:generate
 npm run db:push
 ```
 
-This project uses `prisma db push` to apply the schema; there is no migrations
-folder.
-
-### 5. Run the dev server
+### 4. Run Development Server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Visit [http://localhost:3000](http://localhost:3000) for the participant app, or navigate to [http://localhost:3000/admin/admin](http://localhost:3000/admin/admin) to access the Administrative Management Console.
 
-### Becoming an admin
+### 5. Sync Clerk Roles (Optional)
 
-Admin features (challenge creation, team-request approval, CSV export) require
-the Clerk user's `publicMetadata.role` to be set to `"admin"` in the Clerk
-dashboard.
-
-### Seeding demo data (optional)
+If you have existing users in Clerk and wish to synchronize their roles to the database:
 
 ```bash
-node scripts/seed-global-challenge.js
-node scripts/seed-mock.js
+node scripts/sync-clerk-roles.js         # Dry run: previews detected changes
+node scripts/sync-clerk-roles.js --apply # Commits role changes to database
 ```
 
 ---
@@ -135,53 +247,13 @@ node scripts/seed-mock.js
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start the dev server |
-| `npm run build` | Production build |
-| `npm run start` | Start the production server |
-| `npm run lint` | Run ESLint |
-| `npm run db:generate` | Regenerate the Prisma client |
-| `npm run db:push` | Push the schema to the database |
-| `npm run db:studio` | Open Prisma Studio (visual DB browser) |
-
----
-
-## Data Model
-
-Seven Prisma models support multi-challenge participation, team membership, and
-an admin-approved team-request workflow:
-
-- **User** — `clerkId` (links to Clerk), name, email, department, streak,
-  lastActionDate, onboarded
-- **Challenge** — name, unique join `code`, optional start/end dates (a
-  permanent "global" challenge is the default experience)
-- **UserChallenge** — join table enrolling users in challenges
-- **Team** — name, optional challenge scope
-- **TeamMember** — join table for team membership
-- **Action** — category, actionType, points, optional note/image, date
-  (linked to a user and a challenge)
-- **TeamRequest** — request to create a team, with PENDING/APPROVED/REJECTED
-  status and an admin reviewer
-
-Enums:
-
-- `ActionCategory`: `TRANSPORT`, `WATER`, `ENERGY`, `RECYCLING`, `FOOD`
-- `TeamRequestStatus`: `PENDING`, `APPROVED`, `REJECTED`
-
----
-
-## Features
-
-- Clerk authentication with a first-run onboarding flow
-- Auto-enrollment in a global challenge; join additional challenges by code
-- Action logging across five categories, with points and optional note/photo
-  bonuses
-- Daily streaks and earnable badges
-- Team and individual leaderboards (all-time, rising, streaks, diversity) with
-  category and time-range filters
-- Personal and community activity feeds
-- Performance chart (you vs. average) rendered with Recharts
-- Admin tools: create challenges, review team requests, export participation
-  data to CSV
+| `npm run dev` | Starts Next.js development server on port 3000 |
+| `npm run build` | Compiles optimized production build |
+| `npm run start` | Launches production server |
+| `npm run lint` | Runs Next.js ESLint validation |
+| `npm run db:generate` | Regenerates Prisma Client types |
+| `npm run db:push` | Synchronizes Prisma schema directly with Neon PostgreSQL |
+| `npm run db:studio` | Opens Prisma Studio GUI in browser |
 
 ---
 
@@ -191,3 +263,6 @@ Enums:
 - Hadi Shaar
 - Naisha Srivastav
 - Nathanael Agbemadon (Nate)
+- Uyen Thy Duong
+- Eyoel Woldehawariat
+- Ebin Thomas
