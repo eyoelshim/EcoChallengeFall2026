@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Users } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Users, Layers, ChevronRight } from "lucide-react";
 import { getMockChallenge, BADGE_STYLES } from "../mock-data";
 
 // In Next.js 15, params is a Promise and must be awaited.
@@ -25,16 +25,26 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
   const dateRange = challenge.startDate + " - " + challenge.endDate;
   const participantCountText = String(challenge.participantCount);
   const hasLeaderboard = challenge.leaderboard.length > 0;
+  const actionsCount = challenge.actions?.length || 0;
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/admin/admin/challenges"
-        className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to challenges
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          href="/admin/admin/challenges"
+          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to challenges
+        </Link>
+        <Link
+          href={`/admin/admin/challenges/${id}/actions`}
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 ring-1 ring-emerald-200 rounded-lg text-xs font-semibold transition-colors"
+        >
+          <Layers className="w-3.5 h-3.5" />
+          Manage Challenge Actions ({actionsCount}) &rarr;
+        </Link>
+      </div>
 
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4">
@@ -50,6 +60,62 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
           <Stat icon={Tag} label="Category" value={challenge.category} />
           <Stat icon={Users} label="Participant Count" value={participantCountText} />
         </dl>
+      </div>
+
+      {/* Associated Actions Section */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">
+              Configured Challenge Actions ({actionsCount})
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Specific sustainability tasks participants can complete to earn points in this challenge.
+            </p>
+          </div>
+          <Link
+            href={`/admin/admin/challenges/${id}/actions`}
+            className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1"
+          >
+            <span>Edit Actions</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        {actionsCount === 0 ? (
+          <p className="text-sm text-slate-500 py-2">
+            No custom actions configured yet.{" "}
+            <Link
+              href={`/admin/admin/challenges/${id}/actions`}
+              className="text-emerald-600 font-medium hover:underline"
+            >
+              Add actions
+            </Link>{" "}
+            to allow participant logging.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {challenge.actions.map((act) => (
+              <div
+                key={act.id}
+                className="p-3 rounded-lg border border-slate-100 bg-slate-50 flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-white text-slate-600 border border-slate-200">
+                      {act.category}
+                    </span>
+                    <span className="text-xs font-bold text-emerald-700">+{act.points} pts</span>
+                  </div>
+                  <h3 className="text-xs font-bold text-slate-900 mt-1 line-clamp-1">{act.title}</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
+                    {act.description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
