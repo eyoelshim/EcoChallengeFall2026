@@ -18,7 +18,6 @@ import {
   createMockChallenge,
   getMockChallenges,
 } from "../mock-data";
-import MobilePreview from "@/components/shared/MobilePreview";
 
 const categories = CHALLENGE_CATEGORIES;
 
@@ -194,7 +193,7 @@ export default function NewChallengePage() {
   const presetList = Object.values(TEMPLATE_PRESETS);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-3xl">
       <Link
         href="/admin/admin/challenges"
         className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 transition-colors"
@@ -210,11 +209,8 @@ export default function NewChallengePage() {
         </p>
       </div>
 
-      {/* Grid: 7 cols Form, 5 cols MobilePreview on lg+ screens */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-7 space-y-6">
-          {/* Quick Start Card: Both Templates and Clone past challenge */}
-          <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-5 shadow-xs space-y-3">
+      {/* Quick Start Card: Both Templates and Clone past challenge */}
+      <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-5 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-emerald-700" />
@@ -429,29 +425,6 @@ export default function NewChallengePage() {
               </button>
             </div>
           </form>
-        </div>
-
-        {/* Right Column: Live Mobile Preview on lg+ */}
-        <div className="lg:col-span-5 hidden lg:block sticky top-24">
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-emerald-600" />
-                Live Participant View
-              </span>
-              <span className="text-[11px] text-slate-400">Updates as you type</span>
-            </div>
-
-            <MobilePreview
-              title={name}
-              category={category}
-              description={description}
-              themeColor="#10B981"
-              actions={stagedActions}
-            />
-          </div>
-        </div>
-      </div>
 
       {/* Confirmation Modal */}
       {createdChallenge && (

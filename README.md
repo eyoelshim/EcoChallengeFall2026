@@ -51,9 +51,9 @@ app/
         page.tsx                        # Global Action Catalog management (master library CRUD)
       templates/
         page.tsx                        # Reusable MPCA challenge templates directory
-        new/page.tsx                    # Template creation with MobilePreview & action selector
+        new/page.tsx                    # Template creation with action catalog selector
         [id]/edit/page.tsx              # Template edit flow
-        TemplateForm.tsx                # Shared authoring form with live phone simulator
+        TemplateForm.tsx                # Shared template authoring form component
       users/
         page.tsx                        # User directory (search, role & status filters)
         UsersTable.tsx                  # Interactive table with deactivation modal
@@ -122,8 +122,6 @@ All administrative capabilities from the legacy GreenStep admin console (`sp26_t
 - **Challenge Cloning ("Clone from Past Challenge"):**
   - In `/admin/admin/challenges/new`, admins can clone past or archived challenges with one click.
   - Auto-populates challenge title, code, category, description, and automatically clones all associated action items.
-- **Live Mobile App Preview Simulator:**
-  - Sticky smartphone mockup (`MobilePreview`) renders in real-time alongside the challenge creation form on desktop viewports, displaying the themed app header, title, category, description, and scrollable action checklist with point values.
 
 ### 3. Challenge Templates Authoring & Management (`/admin/admin/templates`)
 - **Templates Directory (`/admin/admin/templates`):** Full management directory for reusable challenge sprint presets:
@@ -138,7 +136,6 @@ All administrative capabilities from the legacy GreenStep admin console (`sp26_t
   - **Delete Template:** Safe deletion with confirmation modal.
   - **Action Bundle Selector:** Browse all actions from the Global Action Catalog with category tabs and search, and select actions via checkboxes to bundle into the template.
   - **Inline Action Creation:** Create a new global action directly from within the template authoring form (`ActionFormDialog`).
-  - **Live Mobile Preview:** Real-time phone frame simulator reflecting title, theme colors, and bundled action checklist.
 - **Quick Start Integration (`/admin/admin/challenges/new`):**
   - "From Template" dropdown pre-populates challenge parameters and automatically stages recommended actions.
 

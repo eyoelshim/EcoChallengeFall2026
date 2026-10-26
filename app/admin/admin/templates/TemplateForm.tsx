@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   Plus,
   Search,
-  Sparkles,
   Check,
   X,
 } from "lucide-react";
@@ -21,7 +20,6 @@ import {
   type GlobalAction,
   CHALLENGE_CATEGORIES,
 } from "../challenges/mock-data";
-import MobilePreview from "@/components/shared/MobilePreview";
 
 const THEME_PALETTES = [
   { name: "Emerald Green", hex: "#10B981" },
@@ -223,18 +221,16 @@ export default function TemplateForm({ initialData, isEdit = false }: TemplateFo
         </p>
       </div>
 
-      {/* Main Grid: Form on Left (7 cols), MobilePreview on Right (5 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Column: Authoring Form */}
-        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-6">
-          {formError && (
-            <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-red-500" />
-              <span>{formError}</span>
-            </div>
-          )}
+      {/* Main Authoring Form Card */}
+      <div className="max-w-3xl bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-6">
+        {formError && (
+          <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-500" />
+            <span>{formError}</span>
+          </div>
+        )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
             {/* Section 1: Template Basics */}
             <div className="space-y-4">
               <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2">
@@ -489,28 +485,6 @@ export default function TemplateForm({ initialData, isEdit = false }: TemplateFo
             </div>
           </form>
         </div>
-
-        {/* Right Column: Sticky Live Mobile Simulator */}
-        <div className="lg:col-span-5 hidden lg:block sticky top-24">
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-emerald-600" />
-                Live Participant View
-              </span>
-              <span className="text-[11px] text-slate-400">Updates in real time</span>
-            </div>
-
-            <MobilePreview
-              title={name}
-              category={category}
-              description={description}
-              themeColor={themeColor}
-              actions={bundledActions}
-            />
-          </div>
-        </div>
-      </div>
 
       {/* CREATE NEW GLOBAL ACTION MODAL */}
       {isCreateActionOpen && (
