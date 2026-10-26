@@ -527,3 +527,336 @@ export const TEMPLATE_PRESETS: Record<string, TemplatePreset> = {
     ],
   },
 };
+
+// ============================================================
+// Global Action Catalog Store
+// ============================================================
+
+export type GlobalAction = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  points: number;
+  createdAt: string;
+};
+
+export const INITIAL_GLOBAL_ACTIONS: GlobalAction[] = [
+  // Transportation
+  {
+    id: "act-glob-1",
+    title: "Bike or Walk to Campus",
+    description: "Choose active human-powered transit for your daily commute instead of a personal vehicle.",
+    category: "Transportation",
+    points: 50,
+    createdAt: "2026-01-15",
+  },
+  {
+    id: "act-glob-2",
+    title: "Ride Public Transit (Bus / Light Rail)",
+    description: "Take Metro Transit bus or light rail to class or work.",
+    category: "Transportation",
+    points: 35,
+    createdAt: "2026-01-15",
+  },
+  {
+    id: "act-glob-3",
+    title: "Carpool with Colleagues or Students",
+    description: "Share a ride with two or more campus commuters to reduce single-occupancy trips.",
+    category: "Transportation",
+    points: 25,
+    createdAt: "2026-01-16",
+  },
+  {
+    id: "act-glob-4",
+    title: "Log a Telework / Remote Day",
+    description: "Eliminate commute carbon emissions entirely by completing work or coursework remotely.",
+    category: "Transportation",
+    points: 20,
+    createdAt: "2026-01-18",
+  },
+  {
+    id: "act-glob-5",
+    title: "Plan Errands to Minimize Miles",
+    description: "Combine multiple grocery, clinic, or supply trips into a single trip chain.",
+    category: "Transportation",
+    points: 15,
+    createdAt: "2026-01-20",
+  },
+
+  // Water
+  {
+    id: "act-glob-6",
+    title: "Turn Off Tap While Brushing Teeth / Lathering",
+    description: "Keep faucet closed when water is not actively rinsing.",
+    category: "Water",
+    points: 10,
+    createdAt: "2026-01-15",
+  },
+  {
+    id: "act-glob-7",
+    title: "Under-5-Minute Shower",
+    description: "Time and complete your shower in under 5 minutes to conserve hot water.",
+    category: "Water",
+    points: 25,
+    createdAt: "2026-01-16",
+  },
+  {
+    id: "act-glob-8",
+    title: "Report Campus Water Leak",
+    description: "Report a dripping faucet, running toilet, or irrigation leak to facilities.",
+    category: "Water",
+    points: 30,
+    createdAt: "2026-01-18",
+  },
+  {
+    id: "act-glob-9",
+    title: "Use Reusable Water Bottle",
+    description: "Refill at campus hydration stations instead of purchasing single-use bottles.",
+    category: "Water",
+    points: 15,
+    createdAt: "2026-01-19",
+  },
+  {
+    id: "act-glob-10",
+    title: "Run Washing Machine on Full Load Only",
+    description: "Conserve wash water by waiting for a full laundry or dishwasher load.",
+    category: "Water",
+    points: 20,
+    createdAt: "2026-01-22",
+  },
+
+  // Energy
+  {
+    id: "act-glob-11",
+    title: "Turn Off Unoccupied Room Lights",
+    description: "Switch off overhead lights when leaving an empty office, conference room, or lounge.",
+    category: "Energy",
+    points: 10,
+    createdAt: "2026-01-15",
+  },
+  {
+    id: "act-glob-12",
+    title: "Unplug Phantom Chargers & Vampire Loads",
+    description: "Unplug standby laptop docks, phone chargers, and appliances before leaving for the weekend.",
+    category: "Energy",
+    points: 20,
+    createdAt: "2026-01-16",
+  },
+  {
+    id: "act-glob-13",
+    title: "Cold Water Laundry Wash",
+    description: "Run washing machines on the cold setting to cut water heating electricity.",
+    category: "Energy",
+    points: 25,
+    createdAt: "2026-01-17",
+  },
+  {
+    id: "act-glob-14",
+    title: "Take Stairs Instead of Elevator",
+    description: "Opt for the stairwell for 1-3 floor journeys between classrooms and offices.",
+    category: "Energy",
+    points: 15,
+    createdAt: "2026-01-19",
+  },
+  {
+    id: "act-glob-15",
+    title: "Power Down Workstation at Day's End",
+    description: "Completely shut down external monitors, desktop towers, and docking stations overnight.",
+    category: "Energy",
+    points: 15,
+    createdAt: "2026-01-21",
+  },
+
+  // Waste
+  {
+    id: "act-glob-16",
+    title: "Pack a Litterless / Zero-Waste Lunch",
+    description: "Bring meals in reusable food containers with washable utensils and cloth napkins.",
+    category: "Waste",
+    points: 25,
+    createdAt: "2026-01-15",
+  },
+  {
+    id: "act-glob-17",
+    title: "Compost Organic Food Scraps",
+    description: "Divert banana peels, apple cores, and coffee grounds into green organics bins.",
+    category: "Waste",
+    points: 20,
+    createdAt: "2026-01-16",
+  },
+  {
+    id: "act-glob-18",
+    title: "Accurately Sort Mixed Recycling",
+    description: "Ensure clean paper, aluminum, and rigid plastics are placed in blue bins without food grease.",
+    category: "Waste",
+    points: 15,
+    createdAt: "2026-01-18",
+  },
+  {
+    id: "act-glob-19",
+    title: "Refuse Single-Use Plastic Bags / Cups",
+    description: "Bring a reusable tote bag or travel mug for campus dining and coffee runs.",
+    category: "Waste",
+    points: 20,
+    createdAt: "2026-01-20",
+  },
+  {
+    id: "act-glob-20",
+    title: "Avoid Printing Digital Documents",
+    description: "Review documents digitally, annotate via PDF, and avoid hard-copy printouts.",
+    category: "Waste",
+    points: 10,
+    createdAt: "2026-01-21",
+  },
+
+  // Food
+  {
+    id: "act-glob-21",
+    title: "Eat a 100% Plant-Based Meal",
+    description: "Choose a vegetarian or vegan entree with no animal meat or poultry.",
+    category: "Food",
+    points: 30,
+    createdAt: "2026-01-15",
+  },
+  {
+    id: "act-glob-22",
+    title: "Choose Locally Grown Ingredients",
+    description: "Select Minnesota or Midwest farm produce at campus dining or local markets.",
+    category: "Food",
+    points: 25,
+    createdAt: "2026-01-17",
+  },
+  {
+    id: "act-glob-23",
+    title: "Clean Plate Club (Zero Food Waste)",
+    description: "Portion responsibly and finish all food on your tray without landfill disposal.",
+    category: "Food",
+    points: 20,
+    createdAt: "2026-01-19",
+  },
+  {
+    id: "act-glob-24",
+    title: "Drink Tap Water Over Bottled Soda",
+    description: "Skip single-use cans or bottles in favor of campus chilled tap water.",
+    category: "Food",
+    points: 10,
+    createdAt: "2026-01-20",
+  },
+];
+
+const globalActionsStore: GlobalAction[] = [...INITIAL_GLOBAL_ACTIONS];
+
+export function getGlobalActions(): GlobalAction[] {
+  return [...globalActionsStore];
+}
+
+export function getGlobalAction(id: string): GlobalAction | undefined {
+  return globalActionsStore.find((a) => a.id === id);
+}
+
+export function createGlobalAction(data: {
+  title: string;
+  description: string;
+  category: string;
+  points: number;
+}): GlobalAction {
+  const newAction: GlobalAction = {
+    id: `act-glob-${Date.now()}`,
+    title: data.title.trim(),
+    description: data.description.trim(),
+    category: data.category,
+    points: data.points,
+    createdAt: new Date().toISOString().slice(0, 10),
+  };
+  globalActionsStore.unshift(newAction);
+  return newAction;
+}
+
+export function updateGlobalAction(
+  id: string,
+  data: Partial<{ title: string; description: string; category: string; points: number }>
+): GlobalAction | null {
+  const idx = globalActionsStore.findIndex((a) => a.id === id);
+  if (idx === -1) return null;
+  globalActionsStore[idx] = {
+    ...globalActionsStore[idx],
+    ...data,
+  };
+  return globalActionsStore[idx];
+}
+
+export function deleteGlobalAction(id: string): boolean {
+  const idx = globalActionsStore.findIndex((a) => a.id === id);
+  if (idx === -1) return false;
+  globalActionsStore.splice(idx, 1);
+  return true;
+}
+
+// ============================================================
+// Dynamic Challenge Templates Store
+// ============================================================
+
+const dynamicTemplatesStore: TemplatePreset[] = Object.values(TEMPLATE_PRESETS).map((t) => ({
+  ...t,
+  actions: [...t.actions],
+}));
+
+export function getTemplatesList(): TemplatePreset[] {
+  return [...dynamicTemplatesStore];
+}
+
+export function getTemplateById(id: string): TemplatePreset | undefined {
+  return dynamicTemplatesStore.find((t) => t.id === id);
+}
+
+export function createTemplate(data: {
+  name: string;
+  code: string;
+  category: string;
+  duration?: string;
+  days?: number;
+  description: string;
+  themeColor?: string;
+  actions: Array<{ title: string; description: string; category: string; points: number }>;
+}): TemplatePreset {
+  const id = data.code.toLowerCase().replace(/[^a-z0-9]/g, "-") || `tmpl-${Date.now()}`;
+  const newTemplate: TemplatePreset = {
+    id,
+    name: data.name.trim(),
+    code: data.code.trim().toUpperCase(),
+    category: data.category,
+    duration: data.duration || "1 week",
+    days: data.days || 7,
+    description: data.description.trim(),
+    themeColor: data.themeColor || "#10B981",
+    actions: [...data.actions],
+  };
+  dynamicTemplatesStore.unshift(newTemplate);
+  // Also register in TEMPLATE_PRESETS for backwards compatibility
+  TEMPLATE_PRESETS[id] = newTemplate;
+  return newTemplate;
+}
+
+export function updateTemplate(
+  id: string,
+  updates: Partial<TemplatePreset>
+): TemplatePreset | null {
+  const idx = dynamicTemplatesStore.findIndex((t) => t.id === id);
+  if (idx === -1) return null;
+  dynamicTemplatesStore[idx] = {
+    ...dynamicTemplatesStore[idx],
+    ...updates,
+  };
+  TEMPLATE_PRESETS[id] = dynamicTemplatesStore[idx];
+  return dynamicTemplatesStore[idx];
+}
+
+export function deleteTemplate(id: string): boolean {
+  const idx = dynamicTemplatesStore.findIndex((t) => t.id === id);
+  if (idx === -1) return false;
+  dynamicTemplatesStore.splice(idx, 1);
+  delete TEMPLATE_PRESETS[id];
+  return true;
+}
+

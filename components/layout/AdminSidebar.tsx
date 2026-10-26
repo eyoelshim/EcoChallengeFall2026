@@ -11,6 +11,7 @@ import {
   Users,
   BarChart3,
   LayoutTemplate,
+  ListChecks,
 } from "lucide-react";
 
 interface NavItem {
@@ -22,10 +23,11 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/admin/admin", icon: LayoutDashboard },
   { label: "Challenges", href: "/admin/admin/challenges", icon: Calendar },
+  { label: "Action Catalog", href: "/admin/admin/actions", icon: ListChecks },
+  { label: "Templates", href: "/admin/admin/templates", icon: LayoutTemplate },
   { label: "Groups", href: "/admin/admin/groups", icon: Building2 },
   { label: "Users", href: "/admin/admin/users", icon: Users },
   { label: "Reports", href: "/admin/admin/reports", icon: BarChart3 },
-  { label: "Templates", href: "/admin/admin/templates", icon: LayoutTemplate },
 ];
 
 export default function AdminSidebar() {

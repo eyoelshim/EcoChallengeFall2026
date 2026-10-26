@@ -22,6 +22,7 @@ import {
   addChallengeAction,
   updateChallengeAction,
   deleteChallengeAction,
+  getGlobalActions,
   CHALLENGE_CATEGORIES,
   type Challenge,
   type ChallengeActionItem,
@@ -42,6 +43,8 @@ export default function ChallengeActionsPage({
 
   // Modal states
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState("");
   const [editingAction, setEditingAction] = useState<ChallengeActionItem | null>(null);
   const [deleteConfirmAction, setDeleteConfirmAction] = useState<ChallengeActionItem | null>(null);
 
@@ -196,14 +199,27 @@ export default function ChallengeActionsPage({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={openAddModal}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Add Custom Action
-        </button>
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              setCatalogSearch("");
+              setIsCatalogModalOpen(true);
+            }}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 border border-slate-200 bg-white text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors shadow-2xs"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-600" />
+            Import from Catalog
+          </button>
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Add Custom Action
+          </button>
+        </div>
       </div>
 
       {/* Metric Summary Cards */}
@@ -524,6 +540,124 @@ export default function ChallengeActionsPage({
                 className="px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-semibold hover:bg-rose-700 transition-colors shadow-sm"
               >
                 Delete Action
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IMPORT FROM GLOBAL CATALOG MODAL */}
+      {isCatalogModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Import from Global Action Catalog
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Select reusable MPCA actions to attach to {challenge.title}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCatalogModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={catalogSearch}
+                onChange={(e) => setCatalogSearch(e.target.value)}
+                placeholder="Search catalog actions by title or description..."
+                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+
+            {/* Catalog List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl max-h-96">
+              {getGlobalActions()
+                .filter((ga) => {
+                  if (!catalogSearch.trim()) return true;
+                  const q = catalogSearch.toLowerCase();
+                  return (
+                    ga.title.toLowerCase().includes(q) ||
+                    ga.description.toLowerCase().includes(q)
+                  );
+                })
+                .map((ga) => {
+                  const alreadyAdded = actions.some(
+                    (a) => a.title.toLowerCase() === ga.title.toLowerCase()
+                  );
+                  return (
+                    <div
+                      key={ga.id}
+                      className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-900 text-sm">
+                            {ga.title}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
+                            {ga.category}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
+                          {ga.description}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md ring-1 ring-emerald-200">
+                          +{ga.points} pts
+                        </span>
+
+                        {alreadyAdded ? (
+                          <span className="text-xs font-semibold text-slate-400 px-3 py-1.5 bg-slate-100 rounded-lg cursor-not-allowed">
+                            ✓ Attached
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              addChallengeAction(id, {
+                                title: ga.title,
+                                description: ga.description,
+                                category: ga.category,
+                                points: ga.points,
+                              });
+                              setActions(getChallengeActions(id));
+                              showToast(`Attached "${ga.title}" to challenge.`);
+                            }}
+                            className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors shadow-2xs"
+                          >
+                            + Attach
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsCatalogModalOpen(false)}
+                className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
+              >
+                Done
               </button>
             </div>
           </div>
