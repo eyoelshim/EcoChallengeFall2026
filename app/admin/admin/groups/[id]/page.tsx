@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Users, Award, Building2, Flag } from "lucide-react";
 import { getMockGroup } from "../mock-data";
+import { getAdminDepartment, type department} from "../../../../actions/admin-groups";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -10,7 +11,7 @@ interface PageProps {
 
 export default async function GroupDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const group = getMockGroup(id);
+  const group = await getAdminDepartment(id);
 
   if (!group) {
     notFound();
@@ -68,7 +69,7 @@ export default async function GroupDetailPage({ params }: PageProps) {
             <div>
               <span className="text-xs font-medium text-slate-500 block">Total Points Earned</span>
               <span className="text-xl font-bold text-slate-900">
-                {group.totalPoints.toLocaleString()}
+                {/*group.totalPoints.toLocaleString()*/} None
               </span>
             </div>
           </div>
@@ -97,7 +98,7 @@ export default async function GroupDetailPage({ params }: PageProps) {
             </p>
           </div>
           <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-full">
-            {group.members.length} {group.members.length === 1 ? "Member" : "Members"} Listed
+            {group.users ? group.users.length : 0} {group.users?.length === 1 ? "Member" : "Members"} Listed.
           </span>
         </div>
 
@@ -132,13 +133,18 @@ export default async function GroupDetailPage({ params }: PageProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {group.members.map((member) => (
+              {(group.users || []).map((member: any) => (
                 <tr
                   key={member.id}
                   className="hover:bg-slate-50/80 transition-colors"
                 >
                   <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">
-                    {member.name}
+                    <Link
+                    href={`/admin/admin/groups/${member.id}`}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
+                    >
+                      {member.name}
+                      </Link>
                   </td>
                   <td className="px-6 py-4 text-slate-500 whitespace-nowrap">
                     {member.email}
