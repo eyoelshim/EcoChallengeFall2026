@@ -60,6 +60,10 @@ export default function TemplatesPage() {
   const [deletingTemplate, setDeletingTemplate] = useState<TemplatePreset | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    setTemplates(getTemplatesList());
+  }, []);
+
   const toggleExpand = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
   };

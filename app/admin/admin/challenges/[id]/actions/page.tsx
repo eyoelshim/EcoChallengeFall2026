@@ -37,6 +37,7 @@ export default function ChallengeActionsPage({
   const { id } = use(params);
 
   const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [mounted, setMounted] = useState(false);
   const [actions, setActions] = useState<ChallengeActionItem[]>([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -57,6 +58,7 @@ export default function ChallengeActionsPage({
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
   useEffect(() => {
+    setMounted(true);
     const found = getMockChallenge(id);
     if (found) {
       setChallenge(found);
@@ -149,10 +151,37 @@ export default function ChallengeActionsPage({
     return actions.reduce((sum, a) => sum + a.points, 0);
   }, [actions]);
 
-  if (!challenge) {
+  if (!mounted) {
     return (
       <div className="p-12 text-center text-sm text-slate-500">
+        <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
         Loading challenge action configuration...
+      </div>
+    );
+  }
+
+  if (!challenge) {
+    return (
+      <div className="space-y-4">
+        <Link
+          href="/admin/admin/challenges"
+          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to challenges
+        </Link>
+        <div className="p-12 text-center bg-white border border-slate-200 rounded-xl">
+          <h2 className="text-lg font-bold text-slate-900">Challenge Not Found</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            The challenge with ID &ldquo;{id}&rdquo; could not be found.
+          </p>
+          <Link
+            href="/admin/admin/challenges"
+            className="inline-block mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
+          >
+            Return to Challenges List
+          </Link>
+        </div>
       </div>
     );
   }

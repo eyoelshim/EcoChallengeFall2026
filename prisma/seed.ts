@@ -1,5 +1,6 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
+config(); // fallback to standard .env if .env.local is absent
 
 import {
   ActionCategory,
