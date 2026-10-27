@@ -1,7 +1,7 @@
 /**
- * Mock Data Engine for Challenges Management (Sprint 1 Demo 1).
- * Single source of truth shared across challenges list, challenge detail,
- * challenge creation, in-challenge action CRUD, and templates.
+ * @deprecated Challenges list, detail, and creation now read and write the live DB through
+ * app/actions/admin-challenges.ts (#33). This file remains only for pages not yet connected:
+ * in-challenge action CRUD, the global action catalog, and templates.
  */
 
 export type Status = "Active" | "Upcoming" | "Completed";

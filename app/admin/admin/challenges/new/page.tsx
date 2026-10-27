@@ -1,33 +1,36 @@
 // Runs in the browser: needed for form state and the submit handler.
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  CheckCircle2,
   Sparkles,
   Layers,
   X,
   Copy,
 } from "lucide-react";
+import { TEMPLATE_PRESETS } from "../mock-data";
 import {
-  CHALLENGE_CATEGORIES,
-  TEMPLATE_PRESETS,
-  createMockChallenge,
-  getMockChallenges,
-} from "../mock-data";
+  createAdminChallenge,
+  getChallengeFormOptions,
+  type CreateChallengeField,
+} from "@/app/actions/admin-challenges";
 
-const categories = CHALLENGE_CATEGORIES;
+const categories = ["Campus-wide", "Transportation", "Energy", "Waste", "Food", "Water"];
 
-type FormErrors = {
-  name?: string;
-  code?: string;
-  category?: string;
-  startDate?: string;
-  endDate?: string;
-  description?: string;
+const DEFAULT_THEME_COLOR = "#10B981";
+
+type FormErrors = Partial<Record<CreateChallengeField, string>>;
+
+type FormOptions = Awaited<ReturnType<typeof getChallengeFormOptions>>;
+
+type StagedAction = {
+  catalogId?: string;
+  title: string;
+  description: string;
+  category: string;
+  points: number;
 };
 
 const inputBaseClass =
@@ -40,28 +43,42 @@ function formatDateOffset(days: number): string {
 }
 
 export default function NewChallengePage() {
-  const router = useRouter();
-
+  const [options, setOptions] = useState<FormOptions>({ departments: [], challenges: [] });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [selectedCloneId, setSelectedCloneId] = useState<string>("");
   const [name, setName] = useState("");
-  const [code, setCode] = useState("");
   const [category, setCategory] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [themeColor, setThemeColor] = useState(DEFAULT_THEME_COLOR);
   const [description, setDescription] = useState("");
-  const [stagedActions, setStagedActions] = useState<
-    Array<{ title: string; description: string; category: string; points: number }>
-  >([]);
+  const [stagedActions, setStagedActions] = useState<StagedAction[]>([]);
 
-  const [createdChallenge, setCreatedChallenge] = useState<{
-    name: string;
-    code: string;
-    actionCount: number;
-  } | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSaving, startSaving] = useTransition();
 
-  const challengesList = getMockChallenges();
+  const challengesList = options.challenges;
+
+  useEffect(() => {
+    getChallengeFormOptions()
+      .then(setOptions)
+      .catch(() => setFormError("Couldn't load departments and past challenges. Refresh to try again."));
+  }, []);
+
+  const resetForm = () => {
+    setSelectedTemplateId("");
+    setSelectedCloneId("");
+    setName("");
+    setCategory("");
+    setDepartmentId("");
+    setStartDate("");
+    setEndDate("");
+    setThemeColor(DEFAULT_THEME_COLOR);
+    setDescription("");
+    setStagedActions([]);
+  };
 
   const applyTemplate = (templateId: string) => {
     setSelectedCloneId("");
@@ -73,9 +90,9 @@ export default function NewChallengePage() {
 
     const preset = TEMPLATE_PRESETS[templateId];
     setName(preset.name);
-    setCode(preset.code);
     setCategory(preset.category);
     setDescription(preset.description);
+    setThemeColor(preset.themeColor || DEFAULT_THEME_COLOR);
 
     const todayStr = new Date().toISOString().slice(0, 10);
     setStartDate(todayStr);
@@ -94,23 +111,17 @@ export default function NewChallengePage() {
     const pastChallenge = challengesList.find((c) => c.id === challengeId);
     if (!pastChallenge) return;
 
-    setName(`${pastChallenge.title} (Clone)`);
-    setCode(`${pastChallenge.code}-C`);
-    setCategory(pastChallenge.category);
-    setDescription(pastChallenge.description);
+    setName(`${pastChallenge.name} (Clone)`);
+    setCategory(pastChallenge.category ?? "");
+    setDepartmentId(pastChallenge.departmentId ?? "");
+    setThemeColor(pastChallenge.themeColor || DEFAULT_THEME_COLOR);
+    setDescription(pastChallenge.description ?? "");
 
     const todayStr = new Date().toISOString().slice(0, 10);
     setStartDate(todayStr);
     setEndDate(formatDateOffset(7));
 
-    setStagedActions(
-      (pastChallenge.actions || []).map((a) => ({
-        title: a.title,
-        description: a.description,
-        category: a.category,
-        points: a.points,
-      }))
-    );
+    setStagedActions(pastChallenge.actions);
   };
 
   useEffect(() => {
@@ -123,63 +134,17 @@ export default function NewChallengePage() {
     }
   }, []);
 
-  function validate(): FormErrors {
-    const found: FormErrors = {};
-
-    if (name.trim() === "") {
-      found.name = "Challenge name is required.";
-    }
-
-    const codePattern = /^[A-Z0-9-]{3,14}$/;
-    if (!codePattern.test(code)) {
-      found.code = "Use 3–14 capital letters, numbers, or dashes (e.g. CC-F26-C).";
-    }
-
-    if (category === "") {
-      found.category = "Pick a category.";
-    }
-
-    if (startDate === "") {
-      found.startDate = "Start date is required.";
-    }
-
-    if (endDate === "") {
-      found.endDate = "End date is required.";
-    } else if (startDate !== "" && endDate < startDate) {
-      found.endDate = "End date must be on or after the start date.";
-    }
-
-    if (description.trim().length < 10) {
-      found.description = "Add a short description (at least 10 characters).";
-    }
-
-    return found;
-  }
-
-  function handleSubmit(event: React.FormEvent) {
+  // Validation runs on the server (Zod); on success the action redirects to the challenges list
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    setErrors({});
+    setFormError(null);
 
-    const found = validate();
-    setErrors(found);
-
-    if (Object.keys(found).length > 0) {
-      return;
-    }
-
-    const created = createMockChallenge({
-      name,
-      code,
-      category,
-      startDate,
-      endDate,
-      description,
-      actions: stagedActions,
-    });
-
-    setCreatedChallenge({
-      name: created.title,
-      code: created.code,
-      actionCount: stagedActions.length,
+    startSaving(async () => {
+      const result = await createAdminChallenge(formData);
+      if (result?.fieldErrors) setErrors(result.fieldErrors);
+      if (result?.error) setFormError(result.error);
     });
   }
 
@@ -191,6 +156,8 @@ export default function NewChallengePage() {
   }
 
   const presetList = Object.values(TEMPLATE_PRESETS);
+  // A cloned challenge may use a category outside the standard list; keep it selectable
+  const categoryOptions = category && !categories.includes(category) ? [...categories, category] : categories;
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -221,17 +188,7 @@ export default function NewChallengePage() {
               {(selectedTemplateId || selectedCloneId) && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedTemplateId("");
-                    setSelectedCloneId("");
-                    setName("");
-                    setCode("");
-                    setCategory("");
-                    setStartDate("");
-                    setEndDate("");
-                    setDescription("");
-                    setStagedActions([]);
-                  }}
+                  onClick={resetForm}
                   className="text-xs font-semibold text-emerald-800 hover:text-emerald-950 inline-flex items-center gap-1"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -278,7 +235,7 @@ export default function NewChallengePage() {
                   <option value="">Select a past challenge...</option>
                   {challengesList.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.title} ({c.status})
+                      {c.name} ({c.status})
                     </option>
                   ))}
                 </select>
@@ -306,8 +263,15 @@ export default function NewChallengePage() {
             noValidate
             className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-5"
           >
+            <input type="hidden" name="actions" value={JSON.stringify(stagedActions)} />
+
+            {formError && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
+            )}
+
             <Field label="Challenge Name" error={errors.name}>
               <input
+                name="name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="e.g. Spring 2026 Energy Saver"
@@ -316,25 +280,33 @@ export default function NewChallengePage() {
             </Field>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <Field label="Challenge Code" error={errors.code}>
-                <input
-                  value={code}
-                  onChange={(event) => setCode(event.target.value.toUpperCase())}
-                  placeholder="CC-F26"
-                  className={inputClass(errors.code) + " font-mono"}
-                />
-              </Field>
-
               <Field label="Category" error={errors.category}>
                 <select
+                  name="category"
                   value={category}
                   onChange={(event) => setCategory(event.target.value)}
                   className={inputClass(errors.category) + " bg-white"}
                 >
                   <option value="">Select a category…</option>
-                  {categories.map((option) => (
+                  {categoryOptions.map((option) => (
                     <option key={option} value={option}>
                       {option}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Department" error={errors.departmentId}>
+                <select
+                  name="departmentId"
+                  value={departmentId}
+                  onChange={(event) => setDepartmentId(event.target.value)}
+                  className={inputClass(errors.departmentId) + " bg-white"}
+                >
+                  <option value="">All departments</option>
+                  {options.departments.map((dept) => (
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}
                     </option>
                   ))}
                 </select>
@@ -343,6 +315,7 @@ export default function NewChallengePage() {
               <Field label="Start Date" error={errors.startDate}>
                 <input
                   type="date"
+                  name="startDate"
                   value={startDate}
                   onChange={(event) => setStartDate(event.target.value)}
                   className={inputClass(errors.startDate)}
@@ -352,15 +325,30 @@ export default function NewChallengePage() {
               <Field label="End Date" error={errors.endDate}>
                 <input
                   type="date"
+                  name="endDate"
                   value={endDate}
                   onChange={(event) => setEndDate(event.target.value)}
                   className={inputClass(errors.endDate)}
                 />
               </Field>
+
+              <Field label="Theme Color" error={errors.themeColor}>
+                <div className="mt-1 flex items-center gap-3">
+                  <input
+                    type="color"
+                    name="themeColor"
+                    value={themeColor}
+                    onChange={(event) => setThemeColor(event.target.value)}
+                    className="h-9 w-14 cursor-pointer rounded border border-slate-300 bg-white"
+                  />
+                  <span className="font-mono text-sm text-slate-500">{themeColor.toUpperCase()}</span>
+                </div>
+              </Field>
             </div>
 
             <Field label="Description" error={errors.description}>
               <textarea
+                name="description"
                 rows={4}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
@@ -387,6 +375,7 @@ export default function NewChallengePage() {
                 <p className="text-xs text-slate-500">
                   These actions will be created and automatically attached to the new challenge upon submission.
                 </p>
+                {errors.actions && <p className="text-xs text-red-600">{errors.actions}</p>}
 
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {stagedActions.map((action, idx) => (
@@ -410,81 +399,25 @@ export default function NewChallengePage() {
               </div>
             )}
 
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <Link
-                href="/admin/admin/challenges"
-                className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
-              >
-                Cancel
-              </Link>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
-              >
-                Create Challenge
-              </button>
+            <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
+              <p className="text-xs text-slate-500">A unique 6-character join code is generated automatically.</p>
+              <div className="flex gap-3">
+                <Link
+                  href="/admin/admin/challenges"
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </Link>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50"
+                >
+                  {isSaving ? "Creating…" : "Create Challenge"}
+                </button>
+              </div>
             </div>
           </form>
-
-      {/* Confirmation Modal */}
-      {createdChallenge && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="challenge-confirm-title"
-        >
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 text-center animate-in fade-in zoom-in-95">
-            <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center">
-              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
-            </div>
-            <h2 id="challenge-confirm-title" className="mt-4 text-lg font-bold text-slate-900">
-              Challenge Created Successfully!
-            </h2>
-            <p className="mt-2 text-sm text-slate-600">
-              <span className="font-bold text-slate-900">{createdChallenge.name}</span> (
-              {createdChallenge.code}) was created.
-            </p>
-            {createdChallenge.actionCount > 0 ? (
-              <p className="mt-1 text-xs text-emerald-700 font-medium">
-                {createdChallenge.actionCount} custom actions attached to this challenge.
-              </p>
-            ) : (
-              <p className="mt-1 text-xs text-slate-400">
-                You can add custom logging actions from the Challenge Detail page.
-              </p>
-            )}
-
-            <div className="mt-6 flex gap-3 justify-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedTemplateId("");
-                  setSelectedCloneId("");
-                  setName("");
-                  setCode("");
-                  setCategory("");
-                  setStartDate("");
-                  setEndDate("");
-                  setDescription("");
-                  setStagedActions([]);
-                  setCreatedChallenge(null);
-                }}
-                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-              >
-                Create Another
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push("/admin/admin/challenges")}
-                className="px-5 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
-              >
-                View Challenges
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
