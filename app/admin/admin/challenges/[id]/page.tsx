@@ -1,8 +1,32 @@
 import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Users, Layers, ChevronRight } from "lucide-react";
-import { getMockChallenge, BADGE_STYLES } from "../mock-data";
+import { ArrowLeft, Calendar, Tag, Users, Layers, ChevronRight, Building2 } from "lucide-react";
+import type { ChallengeStatus } from "@prisma/client";
+
+import { getAdminChallengeById } from "@/app/actions/admin-challenges";
+
+export const dynamic = "force-dynamic";
+
+const BADGE_STYLES: Record<ChallengeStatus, string> = {
+  ACTIVE: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  UPCOMING: "bg-blue-50 text-blue-700 ring-blue-600/20",
+  COMPLETED: "bg-slate-100 text-slate-600 ring-slate-500/20",
+  ARCHIVED: "bg-amber-50 text-amber-700 ring-amber-600/20",
+};
+
+const STATUS_LABELS: Record<ChallengeStatus, string> = {
+  ACTIVE: "Active",
+  UPCOMING: "Upcoming",
+  COMPLETED: "Completed",
+  ARCHIVED: "Archived",
+};
+
+// Challenge dates are stored as UTC midnight, so format in UTC to avoid showing the previous day
+function formatDate(date: Date | null) {
+  if (!date) return "—";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
 
 // In Next.js 15, params is a Promise and must be awaited.
 type ChallengeDetailPageProps = {
@@ -13,7 +37,7 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
   const urlParams = await props.params;
   const id = urlParams.id;
 
-  const challenge = getMockChallenge(id);
+  const challenge = await getAdminChallengeById(id);
 
   // Unknown id (e.g. /challenges/99) → 404 page.
   if (!challenge) {
@@ -22,10 +46,10 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
 
   const badgeColor = BADGE_STYLES[challenge.status];
   const badgeClass = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset " + badgeColor;
-  const dateRange = challenge.startDate + " - " + challenge.endDate;
+  const dateRange = formatDate(challenge.startDate) + " - " + formatDate(challenge.endDate);
   const participantCountText = String(challenge.participantCount);
   const hasLeaderboard = challenge.leaderboard.length > 0;
-  const actionsCount = challenge.actions?.length || 0;
+  const actionsCount = challenge.actions.length;
 
   return (
     <div className="space-y-6">
@@ -46,18 +70,22 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
         </Link>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <div
+        className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm border-t-4"
+        style={{ borderTopColor: challenge.themeColor ?? undefined }}
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{challenge.title}</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{challenge.name}</h1>
             <p className="font-mono text-sm text-slate-500 mt-1">{challenge.code}</p>
           </div>
-          <span className={badgeClass}>{challenge.status}</span>
+          <span className={badgeClass}>{STATUS_LABELS[challenge.status]}</span>
         </div>
         <p className="mt-4 text-sm text-slate-600">{challenge.description}</p>
-        <dl className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+        <dl className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
           <Stat icon={Calendar} label="Dates" value={dateRange} />
-          <Stat icon={Tag} label="Category" value={challenge.category} />
+          <Stat icon={Tag} label="Category" value={challenge.category ?? "—"} />
+          <Stat icon={Building2} label="Department" value={challenge.department ?? "—"} />
           <Stat icon={Users} label="Participant Count" value={participantCountText} />
         </dl>
       </div>
@@ -121,7 +149,7 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Section title="Leaderboard">
           {!hasLeaderboard && (
-            <p className="text-sm text-slate-500">Leaderboard opens when the challenge starts.</p>
+            <p className="text-sm text-slate-500">No points logged in this challenge yet.</p>
           )}
 
           {hasLeaderboard && (
@@ -136,10 +164,10 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {challenge.leaderboard.map((row) => (
-                  <tr key={row.rank}>
+                  <tr key={row.userId}>
                     <td className="py-2 pr-3 w-12 font-semibold text-slate-400">#{row.rank}</td>
                     <td className="py-2 font-medium text-slate-900">{row.name}</td>
-                    <td className="py-2 text-slate-500">{row.team}</td>
+                    <td className="py-2 text-slate-500">{row.team ?? "—"}</td>
                     <td className="py-2 text-right font-semibold text-emerald-700">{row.points}</td>
                   </tr>
                 ))}
@@ -149,29 +177,61 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
         </Section>
 
         <Section title="Participant Roster">
+          {challenge.participants.length === 0 ? (
+            <p className="text-sm text-slate-500">No one has joined this challenge yet.</p>
+          ) : (
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th className="pb-2 font-medium">Name</th>
+                  <th className="pb-2 font-medium">Email</th>
+                  <th className="pb-2 font-medium">Team</th>
+                  <th className="pb-2 font-medium whitespace-nowrap">Joined</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {challenge.participants.map((person) => (
+                  <tr key={person.id}>
+                    <td className="py-2 pr-3 text-slate-900 whitespace-nowrap">{person.name}</td>
+                    <td className="py-2 pr-3 text-slate-500">{person.email}</td>
+                    <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">{person.team ?? "—"}</td>
+                    <td className="py-2 text-slate-500 whitespace-nowrap">{formatDate(person.joinedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Section>
+      </div>
+
+      <Section title="Recent Action Logs">
+        {challenge.recentActions.length === 0 ? (
+          <p className="text-sm text-slate-500">No actions logged in this challenge yet.</p>
+        ) : (
           <table className="min-w-full text-sm">
             <thead>
               <tr className="text-left text-slate-500">
-                <th className="pb-2 font-medium">Name</th>
-                <th className="pb-2 font-medium">Email</th>
-                <th className="pb-2 font-medium">Team</th>
-                <th className="pb-2 font-medium whitespace-nowrap">Joined</th>
+                <th className="pb-2 font-medium">Participant</th>
+                <th className="pb-2 font-medium">Action</th>
+                <th className="pb-2 font-medium">Category</th>
+                <th className="pb-2 font-medium whitespace-nowrap">Date</th>
+                <th className="pb-2 font-medium text-right">Points</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {/* Keyed by name: mock emails are all identical, and keys must be unique. */}
-              {challenge.participants.map((person) => (
-                <tr key={person.name}>
-                  <td className="py-2 pr-3 text-slate-900 whitespace-nowrap">{person.name}</td>
-                  <td className="py-2 pr-3 text-slate-500">{person.email}</td>
-                  <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">{person.team}</td>
-                  <td className="py-2 text-slate-500 whitespace-nowrap">{person.joined}</td>
+              {challenge.recentActions.map((action) => (
+                <tr key={action.id}>
+                  <td className="py-2 pr-3 text-slate-900 whitespace-nowrap">{action.userName}</td>
+                  <td className="py-2 pr-3 text-slate-700">{action.actionType}</td>
+                  <td className="py-2 pr-3 text-slate-500">{action.category}</td>
+                  <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">{formatDate(action.date)}</td>
+                  <td className="py-2 text-right font-semibold text-emerald-700">+{action.points}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </Section>
-      </div>
+        )}
+      </Section>
     </div>
   );
 }
@@ -181,7 +241,7 @@ type SectionProps = {
   children: React.ReactNode;
 };
 
-// Card with a heading, used for the Leaderboard and Roster.
+// Card with a heading, used for the Leaderboard, Roster, and Action Logs.
 function Section(props: SectionProps) {
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm overflow-x-auto">
