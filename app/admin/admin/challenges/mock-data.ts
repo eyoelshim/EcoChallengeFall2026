@@ -1,7 +1,9 @@
 /**
- * @deprecated Challenges list, detail, and creation now read and write the live DB through
- * app/actions/admin-challenges.ts (#33). This file remains only for pages not yet connected:
- * in-challenge action CRUD, the global action catalog, and templates.
+ * @deprecated Fully deprecated. Challenges, In-Challenge Actions, Global Actions, and Templates
+ * now read and write directly to the live Neon database through:
+ * - app/actions/admin-challenges.ts (#33)
+ * - app/actions/admin-actions.ts (#49)
+ * - app/actions/admin-templates.ts (#49)
  */
 
 export type Status = "Active" | "Upcoming" | "Completed";
