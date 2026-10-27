@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useTransition } from "react";
 import Link from "next/link";
 import {
   Download,
@@ -27,68 +27,71 @@ import {
   CATEGORY_COLORS,
   CATEGORY_BADGES,
 } from "./mock-data";
+import {getLiveData} from "./actionss";
 
-export default function ReportsPage() {
+export default function ReportsPage({ 
+  initialChallenges = [] 
+}: { 
+  initialChallenges: { id: string; name: string }[] 
+}) {
+  const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
   const [challengeFilter, setChallengeFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [downloadNotice, setDownloadNotice] = useState(false);
+  const [telemetryData, setTelemetryData] = useState<Awaited<ReturnType<typeof getLiveData>>>({categoryBreakdown: [], participationRows: []});
+
+  useEffect(() => {
+    startTransition(async () => {
+      const data = await getLiveData({
+        challengeId: challengeFilter,
+        category: categoryFilter,
+        startDate: dateFrom,
+        endDate: dateTo,
+      });
+      setTelemetryData(data);
+    });
+  }, [challengeFilter, categoryFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Filter participation records matching challenge and date range filters
-  const filtered = useMemo(() => {
-    return INITIAL_PARTICIPATION_RECORDS.filter((p) => {
-      if (challengeFilter !== "All" && p.challengeId !== challengeFilter) {
-        return false;
-      }
-      if (dateFrom && p.completedAt < dateFrom) {
-        return false;
-      }
-      if (dateTo && p.completedAt > dateTo) {
-        return false;
-      }
-      return true;
-    });
-  }, [challengeFilter, dateFrom, dateTo]);
-
   // Derive tabular data for CSV export and display
-  const tableData = useMemo(() => {
-    return filtered.map((p) => ({
-      User: p.userName,
-      Challenge: p.challengeName,
-      Action: p.action,
-      Category: p.category,
-      Date: p.completedAt,
-      Notes: p.notes || "—",
-    }));
-  }, [filtered]);
+const tableData = useMemo(() => {
+  return telemetryData.participationRows.map((p) => ({
+    User: p.user?.name || "NA",
+    Email: p.user?.email || "NA",
+    Department: p.user?.department?.name || "NA",
+    Challenge: p.challenge?.name || "NA",
+    Action: p.actionType,
+    Category: p.category,
+    Date: new Date(p.date).toLocaleDateString(),
+    Notes: p.note || "NA",
+  }));
+}, [telemetryData.participationRows]);
 
   // Aggregate actions by category for the dynamic chart
   const chartData = useMemo(() => {
-    const counts: Record<string, number> = {};
-    filtered.forEach((p) => {
-      counts[p.category] = (counts[p.category] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, count]) => ({
-      name,
-      count,
-      color: CATEGORY_COLORS[name] || "#10B981",
-    }));
-  }, [filtered]);
+  return telemetryData.categoryBreakdown.map((item) => ({
+    name: item.category,
+    count: item._count.id,
+    color: CATEGORY_COLORS[item.category] || "#10B981", // Falls back to emerald if missing
+  }));
+}, [telemetryData.categoryBreakdown]);
 
-  // Unique participant count in filtered subset
+  const totalFilteredActions = telemetryData.participationRows.length;
+
   const uniqueParticipantsCount = useMemo(() => {
-    return new Set(filtered.map((p) => p.userId)).size;
-  }, [filtered]);
+  return new Set(telemetryData.participationRows.map((p) => p.userId)).size;
+}, [telemetryData.participationRows]);
 
   // Total points in filtered subset
   const totalPoints = useMemo(() => {
-    return filtered.reduce((acc, p) => acc + p.points, 0);
-  }, [filtered]);
+  return telemetryData.participationRows.reduce((acc, p) => acc + p.points, 0);
+}, [telemetryData.participationRows]);
 
   const hasActiveFilters = challengeFilter !== "All" || dateFrom !== "" || dateTo !== "";
 
@@ -99,35 +102,46 @@ export default function ReportsPage() {
   };
 
   const handleExportCsv = () => {
-    if (tableData.length === 0) return;
+  if (tableData.length === 0) return;
 
-    const headers = Object.keys(tableData[0]) as (keyof (typeof tableData)[0])[];
-    const csvContent = [
-      headers.join(","),
-      ...tableData.map((row) =>
-        headers
-          .map((header) => {
-            const val = row[header] ?? "";
-            const escaped = String(val).replace(/"/g, '""');
-            return `"${escaped}"`;
-          })
-          .join(",")
-      ),
-    ].join("\n");
+  const rows = telemetryData.participationRows.map((p) => ({
+    User: p.user.name,
+    Email: p.user.email,
+    Department: p.user.department?.name || "NA",
+    Challenge: p.challenge?.name || "NA",
+    Action: p.actionType,
+    Category: p.category,
+    Date: new Date(p.date).toLocaleDateString(),
+    Notes: p.note || "NA",
+  }));
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "report.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const headers = Object.keys(rows[0]) as (keyof typeof rows[0])[];
+  const csvContent = [
+    headers.join(","),
+    ...rows.map((row) =>
+      headers
+        .map((header) => {
+          const val = row[header] ?? "";
+          const escaped = String(val).replace(/"/g, '""');
+          return `"${escaped}"`;
+        })
+        .join(",")
+    ),
+  ].join("\n");
 
-    setDownloadNotice(true);
-    setTimeout(() => setDownloadNotice(false), 4000);
-  };
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", "report.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  setDownloadNotice(true);
+  setTimeout(() => setDownloadNotice(false), 4000);
+};
 
   return (
     <div className="space-y-6">
@@ -191,9 +205,27 @@ export default function ReportsPage() {
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
             >
               <option value="All">All Challenges</option>
-              {REPORT_CHALLENGES.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+              <option value="All">All Challenges</option>
+              {initialChallenges.map((c: { id: string; name: string }) => (
+  <option key={c.id} value={c.id}>
+    {c.name}
+  </option>
+              ))}
+            </select>
+          </div>
+
+          {/* B. Category Dropdown Menu */}
+          <div className="sm:col-span-3 space-y-1.5">
+            <label className="block text-xs font-semibold uppercase text-slate-500">Category</label>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900"
+            >
+              <option value="All">All Categories</option>
+              {["TRANSPORT", "WATER", "ENERGY", "RECYCLING", "FOOD"].map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat.charAt(0) + cat.slice(1).toLowerCase()}
                 </option>
               ))}
             </select>
@@ -209,7 +241,7 @@ export default function ReportsPage() {
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-            />
+              />
           </div>
 
           <div className="sm:col-span-3 space-y-1.5">
@@ -250,7 +282,7 @@ export default function ReportsPage() {
           </div>
           <div className="mt-4">
             <span className="text-3xl font-bold tracking-tight text-slate-900">
-              {filtered.length}
+              {telemetryData.participationRows.length}
             </span>
             <p className="text-xs text-slate-400 mt-1">Actions in selected view</p>
           </div>
@@ -341,7 +373,7 @@ export default function ReportsPage() {
         <div className="p-5 border-b border-slate-200 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-900">
-              Results ({filtered.length} {filtered.length === 1 ? "record" : "records"})
+              Results ({telemetryData.participationRows.length} {telemetryData.participationRows.length === 1 ? "record" : "records"})
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               Detailed event completions matching the selected criteria.
@@ -374,14 +406,14 @@ export default function ReportsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {filtered.map((p) => (
+              {telemetryData.participationRows.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">
                     <Link
                       href={`/admin/admin/users/${p.userId}`}
                       className="text-emerald-700 hover:text-emerald-800 hover:underline font-semibold"
                     >
-                      {p.userName}
+                      {p.user?.name || "NA"}
                     </Link>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -389,11 +421,11 @@ export default function ReportsPage() {
                       href={`/admin/admin/challenges/${p.challengeId}`}
                       className="text-slate-800 hover:text-emerald-700 hover:underline"
                     >
-                      {p.challengeName}
+                      {p.challenge?.name || "NA"}
                     </Link>
                   </td>
                   <td className="px-6 py-4 text-slate-800 whitespace-nowrap font-medium">
-                    {p.action}
+                    {p.actionType}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
@@ -405,14 +437,14 @@ export default function ReportsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-slate-500 whitespace-nowrap text-xs">
-                    {p.completedAt}
+                    {new Date(p.date).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 text-slate-600 text-xs max-w-xs truncate">
-                    {p.notes || "—"}
+                    {p.note || "—"}
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {telemetryData.participationRows.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-500">
                     No records match your filters. Try resetting the challenge or date filters above.
