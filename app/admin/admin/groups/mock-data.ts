@@ -1,5 +1,8 @@
-// Hardcoded demo data and state helpers for Groups & Departments.
-// Mirrored for Sprint 1 demo and will connect to DB in Sprint 2.
+/**
+ * @deprecated Departments and team requests now read and write directly to
+ * the live Neon database via Prisma through `app/actions/admin-groups.ts` (#35).
+ * This mock file is preserved solely for reference.
+ */
 
 export interface GroupMember {
   id: string;
