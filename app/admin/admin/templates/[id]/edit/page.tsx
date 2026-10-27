@@ -4,7 +4,7 @@ import React, { use, useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import TemplateForm from "../../TemplateForm";
-import { getTemplateById, type TemplatePreset } from "@/app/admin/admin/challenges/mock-data";
+import { getAdminTemplateById, type AdminTemplateItem } from "@/app/actions/admin-templates";
 
 interface EditTemplatePageProps {
   params: Promise<{ id: string }>;
@@ -13,18 +13,25 @@ interface EditTemplatePageProps {
 export default function EditTemplatePage({ params }: EditTemplatePageProps) {
   const { id } = use(params);
   const [mounted, setMounted] = useState(false);
-  const [template, setTemplate] = useState<TemplatePreset | null>(null);
+  const [template, setTemplate] = useState<AdminTemplateItem | null>(null);
 
   useEffect(() => {
-    setMounted(true);
-    setTemplate(getTemplateById(id) || null);
+    getAdminTemplateById(id)
+      .then((data) => {
+        setTemplate(data);
+        setMounted(true);
+      })
+      .catch((err) => {
+        console.error("Failed to load template:", err);
+        setMounted(true);
+      });
   }, [id]);
 
   if (!mounted) {
     return (
       <div className="p-8 text-center text-slate-500">
         <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-        Loading template configuration...
+        Loading template configuration from database...
       </div>
     );
   }

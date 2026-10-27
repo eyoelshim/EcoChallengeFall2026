@@ -1,6 +1,6 @@
 "use client";
 
-import React, { use, useState, useEffect, useMemo } from "react";
+import React, { use, useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -17,17 +17,46 @@ import {
   Target,
 } from "lucide-react";
 import {
-  getMockChallenge,
+  getChallengeDetailForActions,
   getChallengeActions,
-  addChallengeAction,
+  addActionToChallenge,
   updateChallengeAction,
-  deleteChallengeAction,
+  removeActionFromChallenge,
   getGlobalActions,
-  CHALLENGE_CATEGORIES,
-  type Challenge,
   type ChallengeActionItem,
-  type ChallengeCategory,
-} from "../../mock-data";
+  type GlobalActionItem,
+} from "@/app/actions/admin-actions";
+
+const CATEGORIES = [
+  { value: "TRANSPORT", label: "Transportation" },
+  { value: "WATER", label: "Water" },
+  { value: "ENERGY", label: "Energy" },
+  { value: "RECYCLING", label: "Waste" },
+  { value: "FOOD", label: "Food" },
+];
+
+function getCategoryBadge(cat: string): { label: string; style: string } {
+  switch (cat) {
+    case "TRANSPORT":
+    case "Transportation":
+      return { label: "Transportation", style: "bg-blue-50 text-blue-700 ring-blue-200" };
+    case "WATER":
+    case "Water":
+      return { label: "Water", style: "bg-cyan-50 text-cyan-700 ring-cyan-200" };
+    case "ENERGY":
+    case "Energy":
+      return { label: "Energy", style: "bg-amber-50 text-amber-700 ring-amber-200" };
+    case "RECYCLING":
+    case "Waste":
+    case "Waste & Recycling":
+      return { label: "Waste", style: "bg-emerald-50 text-emerald-700 ring-emerald-200" };
+    case "FOOD":
+    case "Food":
+      return { label: "Food", style: "bg-purple-50 text-purple-700 ring-purple-200" };
+    default:
+      return { label: cat, style: "bg-slate-100 text-slate-700 ring-slate-200" };
+  }
+}
 
 export default function ChallengeActionsPage({
   params,
@@ -36,9 +65,17 @@ export default function ChallengeActionsPage({
 }) {
   const { id } = use(params);
 
-  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [challenge, setChallenge] = useState<{
+    id: string;
+    name: string;
+    code: string;
+    category: string | null;
+    themeColor: string | null;
+    status: string;
+  } | null>(null);
   const [mounted, setMounted] = useState(false);
   const [actions, setActions] = useState<ChallengeActionItem[]>([]);
+  const [globalCatalog, setGlobalCatalog] = useState<GlobalActionItem[]>([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
 
@@ -51,23 +88,40 @@ export default function ChallengeActionsPage({
 
   // Form field states
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("Transportation");
+  const [category, setCategory] = useState("TRANSPORT");
   const [points, setPoints] = useState(15);
   const [description, setDescription] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-    const found = getMockChallenge(id);
-    if (found) {
-      setChallenge(found);
-      setActions(getChallengeActions(id));
-      if (found.category && CHALLENGE_CATEGORIES.includes(found.category as ChallengeCategory)) {
-        setCategory(found.category);
-      }
+  const loadChallengeAndActions = useCallback(async () => {
+    try {
+      const [chData, actData] = await Promise.all([
+        getChallengeDetailForActions(id),
+        getChallengeActions(id),
+      ]);
+      setChallenge(chData);
+      setActions(actData);
+    } catch (err) {
+      console.error("Failed to load challenge actions:", err);
+    } finally {
+      setMounted(true);
     }
   }, [id]);
+
+  useEffect(() => {
+    loadChallengeAndActions();
+  }, [loadChallengeAndActions]);
+
+  const loadCatalog = async () => {
+    try {
+      const catalog = await getGlobalActions();
+      setGlobalCatalog(catalog);
+    } catch (err) {
+      console.error("Failed to load catalog:", err);
+    }
+  };
 
   const showToast = (msg: string) => {
     setSuccessToast(msg);
@@ -77,7 +131,7 @@ export default function ChallengeActionsPage({
   const openAddModal = () => {
     setEditingAction(null);
     setTitle("");
-    setCategory(challenge?.category || "Transportation");
+    setCategory("TRANSPORT");
     setPoints(15);
     setDescription("");
     setFormError(null);
@@ -94,7 +148,7 @@ export default function ChallengeActionsPage({
     setIsFormModalOpen(true);
   };
 
-  const handleSaveAction = (e: React.FormEvent) => {
+  const handleSaveAction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
       setFormError("Action title is required.");
@@ -105,34 +159,74 @@ export default function ChallengeActionsPage({
       return;
     }
 
-    if (editingAction) {
-      updateChallengeAction(editingAction.id, {
-        title: title.trim(),
-        category,
-        points: Number(points),
-        description: description.trim(),
-      });
-      showToast(`Updated action "${title.trim()}".`);
-    } else {
-      addChallengeAction(id, {
-        title: title.trim(),
-        category,
-        points: Number(points),
-        description: description.trim(),
-      });
-      showToast(`Added action "${title.trim()}".`);
-    }
+    try {
+      setIsSubmitting(true);
+      if (editingAction) {
+        const res = await updateChallengeAction(editingAction.actionCatalogId, id, {
+          title: title.trim(),
+          category,
+          points: Number(points),
+          description: description.trim(),
+        });
+        if (!res.success) throw new Error(res.error || "Failed to update action");
+        showToast(`Updated action "${title.trim()}".`);
+      } else {
+        const res = await addActionToChallenge(id, {
+          title: title.trim(),
+          category,
+          points: Number(points),
+          description: description.trim(),
+        });
+        if (!res.success) throw new Error(res.error || "Failed to create action");
+        showToast(`Added action "${title.trim()}".`);
+      }
 
-    setActions(getChallengeActions(id));
-    setIsFormModalOpen(false);
+      await loadChallengeAndActions();
+      setIsFormModalOpen(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to save action");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteConfirmAction) return;
-    deleteChallengeAction(deleteConfirmAction.id);
-    setActions(getChallengeActions(id));
-    showToast(`Removed action "${deleteConfirmAction.title}".`);
-    setDeleteConfirmAction(null);
+    try {
+      setIsSubmitting(true);
+      const res = await removeActionFromChallenge(id, deleteConfirmAction.actionCatalogId);
+      if (res.success) {
+        await loadChallengeAndActions();
+        showToast(`Removed action "${deleteConfirmAction.title}".`);
+        setDeleteConfirmAction(null);
+      } else {
+        alert(res.error || "Failed to remove action.");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAttachFromCatalog = async (ga: GlobalActionItem) => {
+    try {
+      const res = await addActionToChallenge(id, {
+        catalogId: ga.id,
+        title: ga.title,
+        description: ga.description,
+        category: ga.category,
+        points: ga.points,
+      });
+      if (res.success) {
+        await loadChallengeAndActions();
+        showToast(`Attached "${ga.title}" to challenge.`);
+      } else {
+        alert(res.error || "Failed to attach action.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const filteredActions = useMemo(() => {
@@ -155,7 +249,7 @@ export default function ChallengeActionsPage({
     return (
       <div className="p-12 text-center text-sm text-slate-500">
         <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-        Loading challenge action configuration...
+        Loading challenge action configuration from database...
       </div>
     );
   }
@@ -186,15 +280,6 @@ export default function ChallengeActionsPage({
     );
   }
 
-  const categoryBadgeColors: Record<string, string> = {
-    Transportation: "bg-blue-50 text-blue-700 ring-blue-200",
-    Energy: "bg-amber-50 text-amber-700 ring-amber-200",
-    Waste: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    Food: "bg-purple-50 text-purple-700 ring-purple-200",
-    Water: "bg-cyan-50 text-cyan-700 ring-cyan-200",
-    "Campus-wide": "bg-slate-100 text-slate-700 ring-slate-200",
-  };
-
   return (
     <div className="space-y-6">
       {/* Toast Notification */}
@@ -217,7 +302,7 @@ export default function ChallengeActionsPage({
           </Link>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Manage Actions · {challenge.title}
+              Manage Actions · {challenge.name}
             </h1>
             <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
               {challenge.code}
@@ -233,6 +318,7 @@ export default function ChallengeActionsPage({
             type="button"
             onClick={() => {
               setCatalogSearch("");
+              loadCatalog();
               setIsCatalogModalOpen(true);
             }}
             className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 border border-slate-200 bg-white text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors shadow-2xs"
@@ -287,7 +373,7 @@ export default function ChallengeActionsPage({
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-xl font-bold text-slate-900">{challenge.category}</span>
+            <span className="text-xl font-bold text-slate-900">{challenge.category || "General"}</span>
             <p className="text-xs text-slate-500 mt-0.5">Categorical focus area</p>
           </div>
         </div>
@@ -308,20 +394,23 @@ export default function ChallengeActionsPage({
 
         <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
           <span className="text-xs font-medium text-slate-500 whitespace-nowrap">Category:</span>
-          {["All", ...CHALLENGE_CATEGORIES].map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setCategoryFilter(cat)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                categoryFilter === cat
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+          {["All", ...CATEGORIES.map((c) => c.value)].map((cat) => {
+            const label = cat === "All" ? "All" : CATEGORIES.find((c) => c.value === cat)?.label || cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setCategoryFilter(cat)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                  categoryFilter === cat
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -332,7 +421,7 @@ export default function ChallengeActionsPage({
             Challenge Actions ({filteredActions.length})
           </h2>
           <span className="text-xs text-slate-500">
-            Admins can add, modify, or remove actions at any time.
+            Stored and synchronized with Neon database.
           </span>
         </div>
 
@@ -343,7 +432,7 @@ export default function ChallengeActionsPage({
             <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
               {search || categoryFilter !== "All"
                 ? "No challenge actions match your search query or filter."
-                : "No actions have been added to this challenge yet. Click 'Add Custom Action' to create your first activity."}
+                : "No actions have been added to this challenge yet. Click 'Add Custom Action' or 'Import from Catalog' to configure activities."}
             </p>
             <button
               type="button"
@@ -359,57 +448,57 @@ export default function ChallengeActionsPage({
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 <tr>
-                  <th className="px-5 py-3.5">Action Title & Description</th>
-                  <th className="px-4 py-3.5">Category</th>
-                  <th className="px-4 py-3.5 text-right">Points</th>
-                  <th className="px-5 py-3.5 text-right">Actions</th>
+                  <th className="px-5 py-3">Action Title</th>
+                  <th className="px-5 py-3">Category</th>
+                  <th className="px-5 py-3">Points</th>
+                  <th className="px-5 py-3">Description</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredActions.map((act) => (
-                  <tr key={act.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="px-5 py-4 max-w-md">
-                      <div className="font-semibold text-slate-900">{act.title}</div>
-                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                        {act.description || "No specific instructions provided."}
-                      </p>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ring-1 ring-inset ${
-                          categoryBadgeColors[act.category] || "bg-slate-100 text-slate-700 ring-slate-200"
-                        }`}
-                      >
-                        {act.category}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-right whitespace-nowrap">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                {filteredActions.map((act) => {
+                  const badge = getCategoryBadge(act.category);
+                  return (
+                    <tr key={act.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-5 py-3.5 font-bold text-slate-900 whitespace-nowrap">
+                        {act.title}
+                      </td>
+                      <td className="px-5 py-3.5 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ring-1 ${badge.style}`}
+                        >
+                          {badge.label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 font-bold text-emerald-600 whitespace-nowrap">
                         +{act.points} pts
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-right whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(act)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                          title="Edit Action"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteConfirmAction(act)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                          title="Delete Action"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-600 max-w-md truncate">
+                        {act.description || "—"}
+                      </td>
+                      <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(act)}
+                            className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                            title="Edit action"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirmAction(act)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                            title="Delete action"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -423,32 +512,28 @@ export default function ChallengeActionsPage({
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  {editingAction ? "Edit Challenge Action" : "Add Custom Challenge Action"}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Attached to sprint: <span className="font-semibold">{challenge.title}</span>
-                </p>
-              </div>
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-6 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900">
+                {editingAction ? "Edit Challenge Action" : "Add Custom Action"}
+              </h3>
               <button
                 type="button"
                 onClick={() => setIsFormModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveAction} className="p-6 space-y-4">
-              {formError && (
-                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium">
-                  {formError}
-                </div>
-              )}
+            {formError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
 
+            <form onSubmit={handleSaveAction} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                   Action Title *
@@ -457,13 +542,12 @@ export default function ChallengeActionsPage({
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g., Bike or Walk to Campus"
+                  placeholder="e.g. Unplug Idle Lab Equipment"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                     Category *
@@ -473,9 +557,9 @@ export default function ChallengeActionsPage({
                     onChange={(e) => setCategory(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                   >
-                    {CHALLENGE_CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
+                    {CATEGORIES.map((cat) => (
+                      <option key={cat.value} value={cat.value}>
+                        {cat.label}
                       </option>
                     ))}
                   </select>
@@ -483,17 +567,14 @@ export default function ChallengeActionsPage({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                    Reward Points *
+                    Points *
                   </label>
                   <input
                     type="number"
-                    min={5}
-                    max={200}
-                    step={5}
+                    min="1"
                     value={points}
-                    onChange={(e) => setPoints(Number(e.target.value))}
+                    onChange={(e) => setPoints(Math.max(1, parseInt(e.target.value) || 1))}
                     className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    required
                   />
                 </div>
               </div>
@@ -515,15 +596,17 @@ export default function ChallengeActionsPage({
                 <button
                   type="button"
                   onClick={() => setIsFormModalOpen(false)}
+                  disabled={isSubmitting}
                   className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50"
                 >
-                  {editingAction ? "Save Changes" : "Create Action"}
+                  {isSubmitting ? "Saving..." : editingAction ? "Save Changes" : "Create Action"}
                 </button>
               </div>
             </form>
@@ -559,6 +642,7 @@ export default function ChallengeActionsPage({
               <button
                 type="button"
                 onClick={() => setDeleteConfirmAction(null)}
+                disabled={isSubmitting}
                 className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
               >
                 Cancel
@@ -566,9 +650,10 @@ export default function ChallengeActionsPage({
               <button
                 type="button"
                 onClick={handleDelete}
-                className="px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-semibold hover:bg-rose-700 transition-colors shadow-sm"
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-semibold hover:bg-rose-700 transition-colors shadow-sm disabled:opacity-50"
               >
-                Delete Action
+                {isSubmitting ? "Removing..." : "Delete Action"}
               </button>
             </div>
           </div>
@@ -589,7 +674,7 @@ export default function ChallengeActionsPage({
                   Import from Global Action Catalog
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Select reusable MPCA actions to attach to {challenge.title}.
+                  Select reusable MPCA actions to attach to {challenge.name}.
                 </p>
               </div>
               <button
@@ -615,7 +700,7 @@ export default function ChallengeActionsPage({
 
             {/* Catalog List */}
             <div className="flex-1 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl max-h-96">
-              {getGlobalActions()
+              {globalCatalog
                 .filter((ga) => {
                   if (!catalogSearch.trim()) return true;
                   const q = catalogSearch.toLowerCase();
@@ -626,8 +711,9 @@ export default function ChallengeActionsPage({
                 })
                 .map((ga) => {
                   const alreadyAdded = actions.some(
-                    (a) => a.title.toLowerCase() === ga.title.toLowerCase()
+                    (a) => a.actionCatalogId === ga.id || a.title.toLowerCase() === ga.title.toLowerCase()
                   );
+                  const badge = getCategoryBadge(ga.category);
                   return (
                     <div
                       key={ga.id}
@@ -638,12 +724,12 @@ export default function ChallengeActionsPage({
                           <span className="font-semibold text-slate-900 text-sm">
                             {ga.title}
                           </span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
-                            {ga.category}
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ring-1 ${badge.style}`}>
+                            {badge.label}
                           </span>
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
-                          {ga.description}
+                          {ga.description || "No description provided."}
                         </p>
                       </div>
 
@@ -659,16 +745,7 @@ export default function ChallengeActionsPage({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => {
-                              addChallengeAction(id, {
-                                title: ga.title,
-                                description: ga.description,
-                                category: ga.category,
-                                points: ga.points,
-                              });
-                              setActions(getChallengeActions(id));
-                              showToast(`Attached "${ga.title}" to challenge.`);
-                            }}
+                            onClick={() => handleAttachFromCatalog(ga)}
                             className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors shadow-2xs"
                           >
                             + Attach

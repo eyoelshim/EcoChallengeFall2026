@@ -10,7 +10,8 @@ import {
   X,
   Copy,
 } from "lucide-react";
-import { TEMPLATE_PRESETS, getTemplatesList, type TemplatePreset } from "../mock-data";
+import { getAdminTemplates, type AdminTemplateItem } from "@/app/actions/admin-templates";
+import { normalizeActionCategory } from "@/lib/categories";
 import {
   createAdminChallenge,
   getChallengeFormOptions,
@@ -55,7 +56,7 @@ export default function NewChallengePage() {
   const [description, setDescription] = useState("");
   const [stagedActions, setStagedActions] = useState<StagedAction[]>([]);
 
-  const [presetList, setPresetList] = useState<TemplatePreset[]>(() => getTemplatesList());
+  const [presetList, setPresetList] = useState<AdminTemplateItem[]>([]);
   const [errors, setErrors] = useState<FormErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
@@ -63,23 +64,44 @@ export default function NewChallengePage() {
   const challengesList = options.challenges;
 
   useEffect(() => {
-    setPresetList(getTemplatesList());
+    getAdminTemplates()
+      .then((templates) => {
+        setPresetList(templates);
+        if (typeof window !== "undefined") {
+          const params = new URLSearchParams(window.location.search);
+          const templateId = params.get("template");
+          if (templateId) {
+            const found = templates.find((p) => p.id === templateId);
+            if (found) {
+              setSelectedTemplateId(found.id);
+              setName(found.name);
+              setCategory(found.category);
+              setDescription(found.description);
+              setThemeColor(found.themeColor || DEFAULT_THEME_COLOR);
+
+              const todayStr = new Date().toISOString().slice(0, 10);
+              setStartDate(todayStr);
+              setEndDate(formatDateOffset(found.days || 7));
+              setStagedActions(
+                found.actions.map((act) => ({
+                  catalogId: act.catalogId,
+                  title: act.title,
+                  description: act.description,
+                  category: normalizeActionCategory(act.category),
+                  points: act.points,
+                }))
+              );
+            }
+          }
+        }
+      })
+      .catch((err) => console.error("Failed to load templates:", err));
   }, []);
 
   useEffect(() => {
     getChallengeFormOptions()
       .then(setOptions)
       .catch(() => setFormError("Couldn't load departments and past challenges. Refresh to try again."));
-  }, []);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const templateId = params.get("template");
-      if (templateId) {
-        applyTemplate(templateId);
-      }
-    }
   }, []);
 
   const resetForm = () => {
@@ -103,8 +125,7 @@ export default function NewChallengePage() {
       return;
     }
 
-    const currentPresets = getTemplatesList();
-    const preset = currentPresets.find((p) => p.id === templateId) || TEMPLATE_PRESETS[templateId];
+    const preset = presetList.find((p) => p.id === templateId);
     if (!preset) {
       setStagedActions([]);
       return;
@@ -118,7 +139,15 @@ export default function NewChallengePage() {
     const todayStr = new Date().toISOString().slice(0, 10);
     setStartDate(todayStr);
     setEndDate(formatDateOffset(preset.days || 7));
-    setStagedActions([...preset.actions]);
+    setStagedActions(
+      preset.actions.map((act) => ({
+        catalogId: act.catalogId,
+        title: act.title,
+        description: act.description,
+        category: normalizeActionCategory(act.category),
+        points: act.points,
+      }))
+    );
   };
 
   const applyClone = (challengeId: string) => {
@@ -142,18 +171,16 @@ export default function NewChallengePage() {
     setStartDate(todayStr);
     setEndDate(formatDateOffset(7));
 
-    setStagedActions(pastChallenge.actions);
+    setStagedActions(
+      pastChallenge.actions.map((act) => ({
+        catalogId: act.catalogId,
+        title: act.title,
+        description: act.description ?? "",
+        category: normalizeActionCategory(act.category),
+        points: act.points,
+      }))
+    );
   };
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const templateId = params.get("template");
-      if (templateId && TEMPLATE_PRESETS[templateId]) {
-        applyTemplate(templateId);
-      }
-    }
-  }, []);
 
   // Validation runs on the server (Zod); on success the action redirects to the challenges list
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
