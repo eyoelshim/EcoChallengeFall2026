@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Users, Layers, ChevronRight, Building2 } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Users, Layers, ChevronRight, Building2, Download } from "lucide-react";
 import type { ChallengeStatus } from "@prisma/client";
 
 import { getAdminChallengeById } from "@/app/actions/admin-challenges";
@@ -53,7 +53,7 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/admin/admin/challenges"
           className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 transition-colors"
@@ -61,13 +61,23 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
           <ArrowLeft className="w-4 h-4" />
           Back to challenges
         </Link>
-        <Link
-          href={`/admin/admin/challenges/${id}/actions`}
-          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 ring-1 ring-emerald-200 rounded-lg text-xs font-semibold transition-colors"
-        >
-          <Layers className="w-3.5 h-3.5" />
-          Manage Challenge Actions ({actionsCount}) &rarr;
-        </Link>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/api/export/csv?type=participation&challengeId=${id}`}
+            download
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white text-slate-700 hover:bg-slate-50 ring-1 ring-slate-200 rounded-lg text-xs font-semibold transition-colors shadow-sm"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            Export CSV
+          </a>
+          <Link
+            href={`/admin/admin/challenges/${id}/actions`}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 ring-1 ring-emerald-200 rounded-lg text-xs font-semibold transition-colors"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Manage Challenge Actions ({actionsCount}) &rarr;
+          </Link>
+        </div>
       </div>
 
       <div

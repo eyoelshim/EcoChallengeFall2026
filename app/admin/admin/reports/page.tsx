@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useTransition } from "react";
 import Link from "next/link";
 import {
   Download,
@@ -21,109 +21,95 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import {
-  REPORT_CHALLENGES,
-  INITIAL_PARTICIPATION_RECORDS,
-  CATEGORY_COLORS,
-  CATEGORY_BADGES,
-} from "./mock-data";
+import { CATEGORY_COLORS, CATEGORY_BADGES } from "./mock-data";
+import { getLiveData, getReportChallenges } from "@/app/actions/admin-reports";
+
+const CATEGORY_OPTIONS = [
+  { value: "TRANSPORT", label: "Transportation" },
+  { value: "WATER", label: "Water Conservation" },
+  { value: "ENERGY", label: "Energy Conservation" },
+  { value: "RECYCLING", label: "Waste & Recycling" },
+  { value: "FOOD", label: "Food" },
+];
 
 export default function ReportsPage() {
+  const [, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
+  const [challenges, setChallenges] = useState<{ id: string; name: string }[]>([]);
   const [challengeFilter, setChallengeFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [downloadNotice, setDownloadNotice] = useState(false);
+  const [telemetryData, setTelemetryData] = useState<Awaited<ReturnType<typeof getLiveData>>>({
+    categoryBreakdown: [],
+    participationRows: [],
+  });
 
   useEffect(() => {
     setMounted(true);
+    getReportChallenges()
+      .then((data) => setChallenges(data))
+      .catch((err) => console.error("Failed to load report challenges:", err));
   }, []);
 
-  // Filter participation records matching challenge and date range filters
-  const filtered = useMemo(() => {
-    return INITIAL_PARTICIPATION_RECORDS.filter((p) => {
-      if (challengeFilter !== "All" && p.challengeId !== challengeFilter) {
-        return false;
+  useEffect(() => {
+    startTransition(async () => {
+      try {
+        const data = await getLiveData({
+          challengeId: challengeFilter,
+          category: categoryFilter,
+          startDate: dateFrom,
+          endDate: dateTo,
+        });
+        setTelemetryData(data);
+      } catch (err) {
+        console.error("Failed to fetch live reports data:", err);
       }
-      if (dateFrom && p.completedAt < dateFrom) {
-        return false;
-      }
-      if (dateTo && p.completedAt > dateTo) {
-        return false;
-      }
-      return true;
     });
-  }, [challengeFilter, dateFrom, dateTo]);
-
-  // Derive tabular data for CSV export and display
-  const tableData = useMemo(() => {
-    return filtered.map((p) => ({
-      User: p.userName,
-      Challenge: p.challengeName,
-      Action: p.action,
-      Category: p.category,
-      Date: p.completedAt,
-      Notes: p.notes || "—",
-    }));
-  }, [filtered]);
+  }, [challengeFilter, categoryFilter, dateFrom, dateTo]);
 
   // Aggregate actions by category for the dynamic chart
   const chartData = useMemo(() => {
-    const counts: Record<string, number> = {};
-    filtered.forEach((p) => {
-      counts[p.category] = (counts[p.category] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, count]) => ({
-      name,
-      count,
-      color: CATEGORY_COLORS[name] || "#10B981",
+    return telemetryData.categoryBreakdown.map((item) => ({
+      name: item.category,
+      count: item._count.id,
+      color: CATEGORY_COLORS[item.category] || "#10B981",
     }));
-  }, [filtered]);
+  }, [telemetryData.categoryBreakdown]);
 
-  // Unique participant count in filtered subset
   const uniqueParticipantsCount = useMemo(() => {
-    return new Set(filtered.map((p) => p.userId)).size;
-  }, [filtered]);
+    return new Set(telemetryData.participationRows.map((p) => p.userId)).size;
+  }, [telemetryData.participationRows]);
 
   // Total points in filtered subset
   const totalPoints = useMemo(() => {
-    return filtered.reduce((acc, p) => acc + p.points, 0);
-  }, [filtered]);
+    return telemetryData.participationRows.reduce((acc, p) => acc + p.points, 0);
+  }, [telemetryData.participationRows]);
 
-  const hasActiveFilters = challengeFilter !== "All" || dateFrom !== "" || dateTo !== "";
+  const hasActiveFilters = challengeFilter !== "All" || categoryFilter !== "All" || dateFrom !== "" || dateTo !== "";
 
   const handleResetFilters = () => {
     setChallengeFilter("All");
+    setCategoryFilter("All");
     setDateFrom("");
     setDateTo("");
   };
 
   const handleExportCsv = () => {
-    if (tableData.length === 0) return;
+    const params = new URLSearchParams({ type: "participation" });
+    if (challengeFilter && challengeFilter !== "All") params.set("challengeId", challengeFilter);
+    if (categoryFilter && categoryFilter !== "All") params.set("category", categoryFilter);
+    if (dateFrom) params.set("startDate", dateFrom);
+    if (dateTo) params.set("endDate", dateTo);
 
-    const headers = Object.keys(tableData[0]) as (keyof (typeof tableData)[0])[];
-    const csvContent = [
-      headers.join(","),
-      ...tableData.map((row) =>
-        headers
-          .map((header) => {
-            const val = row[header] ?? "";
-            const escaped = String(val).replace(/"/g, '""');
-            return `"${escaped}"`;
-          })
-          .join(",")
-      ),
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
+    const exportUrl = `/api/export/csv?${params.toString()}`;
     const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "report.csv");
+    link.href = exportUrl;
+    link.setAttribute("download", "");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
 
     setDownloadNotice(true);
     setTimeout(() => setDownloadNotice(false), 4000);
@@ -145,7 +131,7 @@ export default function ReportsPage() {
         <button
           type="button"
           onClick={handleExportCsv}
-          disabled={tableData.length === 0}
+          disabled={telemetryData.participationRows.length === 0}
           className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
         >
           <Download className="w-4 h-4" />
@@ -156,11 +142,11 @@ export default function ReportsPage() {
       {downloadNotice && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-sm flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>Exported filtered records to <strong>report.csv</strong> successfully.</span>
+          <span>Exporting filtered records from <strong>/api/export/csv</strong>...</span>
         </div>
       )}
 
-      {/* Filter Toolbar (Challenge, Date From, Date To) */}
+      {/* Filter Toolbar (Challenge, Category, Date From, Date To) */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
           <span className="text-sm font-semibold text-slate-800 inline-flex items-center gap-1.5">
@@ -180,7 +166,7 @@ export default function ReportsPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-          <div className="sm:col-span-5 space-y-1.5">
+          <div className="sm:col-span-3 space-y-1.5">
             <label htmlFor="challenge-filter" className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
               Challenge
             </label>
@@ -191,7 +177,7 @@ export default function ReportsPage() {
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
             >
               <option value="All">All Challenges</option>
-              {REPORT_CHALLENGES.map((c) => (
+              {challenges.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -200,6 +186,25 @@ export default function ReportsPage() {
           </div>
 
           <div className="sm:col-span-3 space-y-1.5">
+            <label htmlFor="category-filter" className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Category
+            </label>
+            <select
+              id="category-filter"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+            >
+              <option value="All">All Categories</option>
+              {CATEGORY_OPTIONS.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm:col-span-2 space-y-1.5">
             <label htmlFor="date-from" className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
               From Date
             </label>
@@ -212,7 +217,7 @@ export default function ReportsPage() {
             />
           </div>
 
-          <div className="sm:col-span-3 space-y-1.5">
+          <div className="sm:col-span-2 space-y-1.5">
             <label htmlFor="date-to" className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
               To Date
             </label>
@@ -225,15 +230,15 @@ export default function ReportsPage() {
             />
           </div>
 
-          <div className="sm:col-span-1">
+          <div className="sm:col-span-2">
             <button
               type="button"
               onClick={handleExportCsv}
-              disabled={tableData.length === 0}
-              title="Export CSV"
-              className="w-full h-10 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              disabled={telemetryData.participationRows.length === 0}
+              className="w-full h-10 inline-flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
+              <span>Export</span>
             </button>
           </div>
         </div>
@@ -250,7 +255,7 @@ export default function ReportsPage() {
           </div>
           <div className="mt-4">
             <span className="text-3xl font-bold tracking-tight text-slate-900">
-              {filtered.length}
+              {telemetryData.participationRows.length}
             </span>
             <p className="text-xs text-slate-400 mt-1">Actions in selected view</p>
           </div>
@@ -341,7 +346,7 @@ export default function ReportsPage() {
         <div className="p-5 border-b border-slate-200 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-900">
-              Results ({filtered.length} {filtered.length === 1 ? "record" : "records"})
+              Results ({telemetryData.participationRows.length} {telemetryData.participationRows.length === 1 ? "record" : "records"})
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               Detailed event completions matching the selected criteria.
@@ -374,14 +379,14 @@ export default function ReportsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {filtered.map((p) => (
+              {telemetryData.participationRows.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">
                     <Link
                       href={`/admin/admin/users/${p.userId}`}
                       className="text-emerald-700 hover:text-emerald-800 hover:underline font-semibold"
                     >
-                      {p.userName}
+                      {p.user?.name || "NA"}
                     </Link>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -389,11 +394,11 @@ export default function ReportsPage() {
                       href={`/admin/admin/challenges/${p.challengeId}`}
                       className="text-slate-800 hover:text-emerald-700 hover:underline"
                     >
-                      {p.challengeName}
+                      {p.challenge?.name || "NA"}
                     </Link>
                   </td>
                   <td className="px-6 py-4 text-slate-800 whitespace-nowrap font-medium">
-                    {p.action}
+                    {p.actionType}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
@@ -405,14 +410,14 @@ export default function ReportsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-slate-500 whitespace-nowrap text-xs">
-                    {p.completedAt}
+                    {new Date(p.date).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 text-slate-600 text-xs max-w-xs truncate">
-                    {p.notes || "—"}
+                    {p.note || "—"}
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {telemetryData.participationRows.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-500">
                     No records match your filters. Try resetting the challenge or date filters above.
