@@ -3,8 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Building2 } from "lucide-react";
-import { createMockGroup, type DepartmentGroup } from "../mock-data";
-import { createDepartment, type department} from "../../../../actions/admin-groups";
+import { createDepartment, type DepartmentListItem } from "@/app/actions/admin-groups";
 
 const inputClass =
   "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-colors";
@@ -12,12 +11,11 @@ const inputClass =
 export default function CreateGroupPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [activeChallenge, setActiveChallenge] = useState("Campus Sustainability Challenge");
-  const [createdGroup, setCreatedGroup] = useState<DepartmentGroup | null>(null);
-  const [createdDepartment, setCreatedDepartment] = useState<department | null>(null);
+  const [createdDepartment, setCreatedDepartment] = useState<DepartmentListItem | { id: string; name: string; description: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
 
@@ -33,20 +31,25 @@ export default function CreateGroupPage() {
       return;
     }
 
-    const newGroup = await createDepartment({
-      name: trimmedName,
-      description: trimmedDesc,
-      //activeChallenge: activeChallenge.trim() || undefined,
-    });
-
-    setCreatedDepartment(newGroup);
+    try {
+      setIsSubmitting(true);
+      const newGroup = await createDepartment({
+        name: trimmedName,
+        description: trimmedDesc,
+      });
+      setCreatedDepartment(newGroup);
+    } catch (err) {
+      console.error("Error creating department:", err);
+      setError(err instanceof Error ? err.message : "Failed to create department.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const resetForm = () => {
     setName("");
     setDescription("");
-    setActiveChallenge("Campus Sustainability Challenge");
-    setCreatedGroup(null);
+    setCreatedDepartment(null);
     setError(null);
   };
 
@@ -65,7 +68,7 @@ export default function CreateGroupPage() {
           Create Department / Group
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Set up a new campus department or group to participate in eco-challenges.
+          Set up a new campus department or organizational unit in the PostgreSQL database.
         </p>
       </div>
 
@@ -78,7 +81,7 @@ export default function CreateGroupPage() {
                 Department Created Successfully
               </h2>
               <p className="text-sm text-slate-500">
-                Saved in demo state. This department is now available for challenge assignments.
+                Persisted to Neon database. This department is now available for participant enrollment and challenge assignments.
               </p>
             </div>
           </div>
@@ -88,13 +91,11 @@ export default function CreateGroupPage() {
               <span className="text-slate-500 font-medium">Department Name:</span>
               <span className="font-semibold text-slate-900">{createdDepartment.name}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500 font-medium">Active Challenge:</span>
-              <span className="text-slate-700">{/*createdDepartment.activeChallenge*/} None</span>
-            </div>
-            <div className="pt-2 text-xs text-slate-500 border-t border-slate-200">
-              {createdDepartment.description}
-            </div>
+            {createdDepartment.description && (
+              <div className="pt-2 text-xs text-slate-500 border-t border-slate-200">
+                {createdDepartment.description}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3 pt-2">
@@ -109,7 +110,7 @@ export default function CreateGroupPage() {
               onClick={resetForm}
               className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
             >
-              Create Another Group
+              Create Another Department
             </button>
           </div>
         </div>
@@ -132,23 +133,9 @@ export default function CreateGroupPage() {
               id="dept-name"
               type="text"
               required
-              placeholder="e.g. School of Engineering"
+              placeholder="e.g. Environmental Analysis Bureau"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label htmlFor="dept-challenge" className="block text-sm font-medium text-slate-700">
-              Initial Active Challenge
-            </label>
-            <input
-              id="dept-challenge"
-              type="text"
-              placeholder="e.g. Water Challenge"
-              value={activeChallenge}
-              onChange={(e) => setActiveChallenge(e.target.value)}
               className={inputClass}
             />
           </div>
@@ -161,7 +148,7 @@ export default function CreateGroupPage() {
               id="dept-desc"
               rows={4}
               required
-              placeholder="Describe the department or group participants..."
+              placeholder="Describe the department's role and sustainability scope..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className={inputClass}
@@ -178,10 +165,11 @@ export default function CreateGroupPage() {
 
             <button
               type="submit"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm"
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50"
             >
               <Building2 className="w-4 h-4" />
-              Save Department
+              {isSubmitting ? "Saving..." : "Save Department"}
             </button>
           </div>
         </form>
