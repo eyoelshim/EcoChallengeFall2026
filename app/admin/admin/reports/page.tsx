@@ -21,127 +21,99 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import {
-  REPORT_CHALLENGES,
-  INITIAL_PARTICIPATION_RECORDS,
-  CATEGORY_COLORS,
-  CATEGORY_BADGES,
-} from "./mock-data";
-import {getLiveData} from "./actionss";
+import { CATEGORY_COLORS, CATEGORY_BADGES } from "./mock-data";
+import { getLiveData, getReportChallenges } from "@/app/actions/admin-reports";
 
-export default function ReportsPage({ 
-  initialChallenges = [] 
-}: { 
-  initialChallenges: { id: string; name: string }[] 
-}) {
-  const [isPending, startTransition] = useTransition();
+const CATEGORY_OPTIONS = [
+  { value: "TRANSPORT", label: "Transportation" },
+  { value: "WATER", label: "Water Conservation" },
+  { value: "ENERGY", label: "Energy Conservation" },
+  { value: "RECYCLING", label: "Waste & Recycling" },
+  { value: "FOOD", label: "Food" },
+];
+
+export default function ReportsPage() {
+  const [, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
+  const [challenges, setChallenges] = useState<{ id: string; name: string }[]>([]);
   const [challengeFilter, setChallengeFilter] = useState("All");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [downloadNotice, setDownloadNotice] = useState(false);
-  const [telemetryData, setTelemetryData] = useState<Awaited<ReturnType<typeof getLiveData>>>({categoryBreakdown: [], participationRows: []});
-
-  useEffect(() => {
-    startTransition(async () => {
-      const data = await getLiveData({
-        challengeId: challengeFilter,
-        category: categoryFilter,
-        startDate: dateFrom,
-        endDate: dateTo,
-      });
-      setTelemetryData(data);
-    });
-  }, [challengeFilter, categoryFilter, dateFrom, dateTo]);
+  const [telemetryData, setTelemetryData] = useState<Awaited<ReturnType<typeof getLiveData>>>({
+    categoryBreakdown: [],
+    participationRows: [],
+  });
 
   useEffect(() => {
     setMounted(true);
+    getReportChallenges()
+      .then((data) => setChallenges(data))
+      .catch((err) => console.error("Failed to load report challenges:", err));
   }, []);
 
-  // Derive tabular data for CSV export and display
-const tableData = useMemo(() => {
-  return telemetryData.participationRows.map((p) => ({
-    User: p.user?.name || "NA",
-    Email: p.user?.email || "NA",
-    Department: p.user?.department?.name || "NA",
-    Challenge: p.challenge?.name || "NA",
-    Action: p.actionType,
-    Category: p.category,
-    Date: new Date(p.date).toLocaleDateString(),
-    Notes: p.note || "NA",
-  }));
-}, [telemetryData.participationRows]);
+  useEffect(() => {
+    startTransition(async () => {
+      try {
+        const data = await getLiveData({
+          challengeId: challengeFilter,
+          category: categoryFilter,
+          startDate: dateFrom,
+          endDate: dateTo,
+        });
+        setTelemetryData(data);
+      } catch (err) {
+        console.error("Failed to fetch live reports data:", err);
+      }
+    });
+  }, [challengeFilter, categoryFilter, dateFrom, dateTo]);
 
   // Aggregate actions by category for the dynamic chart
   const chartData = useMemo(() => {
-  return telemetryData.categoryBreakdown.map((item) => ({
-    name: item.category,
-    count: item._count.id,
-    color: CATEGORY_COLORS[item.category] || "#10B981", // Falls back to emerald if missing
-  }));
-}, [telemetryData.categoryBreakdown]);
-
-  const totalFilteredActions = telemetryData.participationRows.length;
+    return telemetryData.categoryBreakdown.map((item) => ({
+      name: item.category,
+      count: item._count.id,
+      color: CATEGORY_COLORS[item.category] || "#10B981",
+    }));
+  }, [telemetryData.categoryBreakdown]);
 
   const uniqueParticipantsCount = useMemo(() => {
-  return new Set(telemetryData.participationRows.map((p) => p.userId)).size;
-}, [telemetryData.participationRows]);
+    return new Set(telemetryData.participationRows.map((p) => p.userId)).size;
+  }, [telemetryData.participationRows]);
 
   // Total points in filtered subset
   const totalPoints = useMemo(() => {
-  return telemetryData.participationRows.reduce((acc, p) => acc + p.points, 0);
-}, [telemetryData.participationRows]);
+    return telemetryData.participationRows.reduce((acc, p) => acc + p.points, 0);
+  }, [telemetryData.participationRows]);
 
-  const hasActiveFilters = challengeFilter !== "All" || dateFrom !== "" || dateTo !== "";
+  const hasActiveFilters = challengeFilter !== "All" || categoryFilter !== "All" || dateFrom !== "" || dateTo !== "";
 
   const handleResetFilters = () => {
     setChallengeFilter("All");
+    setCategoryFilter("All");
     setDateFrom("");
     setDateTo("");
   };
 
   const handleExportCsv = () => {
-  if (tableData.length === 0) return;
+    const params = new URLSearchParams({ type: "participation" });
+    if (challengeFilter && challengeFilter !== "All") params.set("challengeId", challengeFilter);
+    if (categoryFilter && categoryFilter !== "All") params.set("category", categoryFilter);
+    if (dateFrom) params.set("startDate", dateFrom);
+    if (dateTo) params.set("endDate", dateTo);
 
-  const rows = telemetryData.participationRows.map((p) => ({
-    User: p.user.name,
-    Email: p.user.email,
-    Department: p.user.department?.name || "NA",
-    Challenge: p.challenge?.name || "NA",
-    Action: p.actionType,
-    Category: p.category,
-    Date: new Date(p.date).toLocaleDateString(),
-    Notes: p.note || "NA",
-  }));
+    const exportUrl = `/api/export/csv?${params.toString()}`;
+    const link = document.createElement("a");
+    link.href = exportUrl;
+    link.setAttribute("download", "");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-  const headers = Object.keys(rows[0]) as (keyof typeof rows[0])[];
-  const csvContent = [
-    headers.join(","),
-    ...rows.map((row) =>
-      headers
-        .map((header) => {
-          const val = row[header] ?? "";
-          const escaped = String(val).replace(/"/g, '""');
-          return `"${escaped}"`;
-        })
-        .join(",")
-    ),
-  ].join("\n");
-
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", "report.csv");
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-
-  setDownloadNotice(true);
-  setTimeout(() => setDownloadNotice(false), 4000);
-};
+    setDownloadNotice(true);
+    setTimeout(() => setDownloadNotice(false), 4000);
+  };
 
   return (
     <div className="space-y-6">
@@ -159,7 +131,7 @@ const tableData = useMemo(() => {
         <button
           type="button"
           onClick={handleExportCsv}
-          disabled={tableData.length === 0}
+          disabled={telemetryData.participationRows.length === 0}
           className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
         >
           <Download className="w-4 h-4" />
@@ -170,11 +142,11 @@ const tableData = useMemo(() => {
       {downloadNotice && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-sm flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>Exported filtered records to <strong>report.csv</strong> successfully.</span>
+          <span>Exporting filtered records from <strong>/api/export/csv</strong>...</span>
         </div>
       )}
 
-      {/* Filter Toolbar (Challenge, Date From, Date To) */}
+      {/* Filter Toolbar (Challenge, Category, Date From, Date To) */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
           <span className="text-sm font-semibold text-slate-800 inline-flex items-center gap-1.5">
@@ -194,7 +166,7 @@ const tableData = useMemo(() => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-          <div className="sm:col-span-5 space-y-1.5">
+          <div className="sm:col-span-3 space-y-1.5">
             <label htmlFor="challenge-filter" className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
               Challenge
             </label>
@@ -205,33 +177,34 @@ const tableData = useMemo(() => {
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
             >
               <option value="All">All Challenges</option>
-              <option value="All">All Challenges</option>
-              {initialChallenges.map((c: { id: string; name: string }) => (
-  <option key={c.id} value={c.id}>
-    {c.name}
-  </option>
-              ))}
-            </select>
-          </div>
-
-          {/* B. Category Dropdown Menu */}
-          <div className="sm:col-span-3 space-y-1.5">
-            <label className="block text-xs font-semibold uppercase text-slate-500">Category</label>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900"
-            >
-              <option value="All">All Categories</option>
-              {["TRANSPORT", "WATER", "ENERGY", "RECYCLING", "FOOD"].map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat.charAt(0) + cat.slice(1).toLowerCase()}
+              {challenges.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>
           </div>
 
           <div className="sm:col-span-3 space-y-1.5">
+            <label htmlFor="category-filter" className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Category
+            </label>
+            <select
+              id="category-filter"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+            >
+              <option value="All">All Categories</option>
+              {CATEGORY_OPTIONS.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm:col-span-2 space-y-1.5">
             <label htmlFor="date-from" className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
               From Date
             </label>
@@ -241,10 +214,10 @@ const tableData = useMemo(() => {
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-              />
+            />
           </div>
 
-          <div className="sm:col-span-3 space-y-1.5">
+          <div className="sm:col-span-2 space-y-1.5">
             <label htmlFor="date-to" className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
               To Date
             </label>
@@ -257,15 +230,15 @@ const tableData = useMemo(() => {
             />
           </div>
 
-          <div className="sm:col-span-1">
+          <div className="sm:col-span-2">
             <button
               type="button"
               onClick={handleExportCsv}
-              disabled={tableData.length === 0}
-              title="Export CSV"
-              className="w-full h-10 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              disabled={telemetryData.participationRows.length === 0}
+              className="w-full h-10 inline-flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
+              <span>Export</span>
             </button>
           </div>
         </div>
