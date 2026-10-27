@@ -243,7 +243,10 @@ Fill `.env.local` with your credentials:
 ```bash
 npm run db:generate
 npm run db:push
+npm run db:seed
 ```
+
+> **Note:** `npm run db:seed` executes `prisma/seed.ts` using idempotent upserts to populate foundational data (departments, standard action catalog, and active/upcoming challenge presets) for local development and Neon environments.
 
 ### 4. Run Development Server
 

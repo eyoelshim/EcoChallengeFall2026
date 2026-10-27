@@ -14,6 +14,7 @@ import {
 import {
   getGlobalActions,
   createGlobalAction,
+  getTemplatesList,
   createTemplate,
   updateTemplate,
   type TemplatePreset,
@@ -41,7 +42,30 @@ export default function TemplateForm({ initialData, isEdit = false }: TemplateFo
   const router = useRouter();
 
   // Master catalog actions
-  const [globalActions, setGlobalActions] = useState<GlobalAction[]>(() => getGlobalActions());
+  const [globalActions, setGlobalActions] = useState<GlobalAction[]>(() => {
+    let current = getGlobalActions();
+    if (initialData?.actions?.length) {
+      let changed = false;
+      for (const act of initialData.actions) {
+        const hasMatch = current.some(
+          (ga) => ga.title.trim().toLowerCase() === act.title.trim().toLowerCase()
+        );
+        if (!hasMatch) {
+          createGlobalAction({
+            title: act.title,
+            description: act.description,
+            category: act.category,
+            points: act.points,
+          });
+          changed = true;
+        }
+      }
+      if (changed) {
+        current = getGlobalActions();
+      }
+    }
+    return current;
+  });
 
   // Form states
   const [name, setName] = useState(initialData?.name || "");
@@ -55,12 +79,17 @@ export default function TemplateForm({ initialData, isEdit = false }: TemplateFo
   // Selected bundled action IDs
   const [selectedActionIds, setSelectedActionIds] = useState<string[]>(() => {
     if (initialData?.actions?.length) {
-      // Match by title or id
-      const initialTitles = new Set(initialData.actions.map((a) => a.title.toLowerCase()));
-      const matched = getGlobalActions()
-        .filter((ga) => initialTitles.has(ga.title.toLowerCase()))
-        .map((ga) => ga.id);
-      return matched.length > 0 ? matched : [];
+      const current = getGlobalActions();
+      const ids: string[] = [];
+      for (const act of initialData.actions) {
+        const match = current.find(
+          (ga) => ga.title.trim().toLowerCase() === act.title.trim().toLowerCase()
+        );
+        if (match && !ids.includes(match.id)) {
+          ids.push(match.id);
+        }
+      }
+      return ids;
     }
     return [];
   });
@@ -160,6 +189,17 @@ export default function TemplateForm({ initialData, isEdit = false }: TemplateFo
       setFormError("Template code is required (e.g. H2O-26).");
       return;
     }
+
+    const existingTemplates = getTemplatesList();
+    const isDuplicateCode = isEdit
+      ? existingTemplates.some((t) => t.id !== initialData?.id && t.code.toUpperCase() === trimmedCode)
+      : existingTemplates.some((t) => t.code.toUpperCase() === trimmedCode);
+
+    if (isDuplicateCode) {
+      setFormError(`A template with code "${trimmedCode}" already exists. Please choose a unique code.`);
+      return;
+    }
+
     if (!trimmedDesc) {
       setFormError("Please provide a description of this template.");
       return;

@@ -10,7 +10,7 @@ import {
   X,
   Copy,
 } from "lucide-react";
-import { TEMPLATE_PRESETS } from "../mock-data";
+import { TEMPLATE_PRESETS, getTemplatesList, type TemplatePreset } from "../mock-data";
 import {
   createAdminChallenge,
   getChallengeFormOptions,
@@ -55,6 +55,7 @@ export default function NewChallengePage() {
   const [description, setDescription] = useState("");
   const [stagedActions, setStagedActions] = useState<StagedAction[]>([]);
 
+  const [presetList, setPresetList] = useState<TemplatePreset[]>(() => getTemplatesList());
   const [errors, setErrors] = useState<FormErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
@@ -62,9 +63,23 @@ export default function NewChallengePage() {
   const challengesList = options.challenges;
 
   useEffect(() => {
+    setPresetList(getTemplatesList());
+  }, []);
+
+  useEffect(() => {
     getChallengeFormOptions()
       .then(setOptions)
       .catch(() => setFormError("Couldn't load departments and past challenges. Refresh to try again."));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const templateId = params.get("template");
+      if (templateId) {
+        applyTemplate(templateId);
+      }
+    }
   }, []);
 
   const resetForm = () => {
@@ -83,12 +98,18 @@ export default function NewChallengePage() {
   const applyTemplate = (templateId: string) => {
     setSelectedCloneId("");
     setSelectedTemplateId(templateId);
-    if (!templateId || !TEMPLATE_PRESETS[templateId]) {
+    if (!templateId) {
       setStagedActions([]);
       return;
     }
 
-    const preset = TEMPLATE_PRESETS[templateId];
+    const currentPresets = getTemplatesList();
+    const preset = currentPresets.find((p) => p.id === templateId) || TEMPLATE_PRESETS[templateId];
+    if (!preset) {
+      setStagedActions([]);
+      return;
+    }
+
     setName(preset.name);
     setCategory(preset.category);
     setDescription(preset.description);
@@ -155,7 +176,6 @@ export default function NewChallengePage() {
     return inputBaseClass + " border-slate-300";
   }
 
-  const presetList = Object.values(TEMPLATE_PRESETS);
   // A cloned challenge may use a category outside the standard list; keep it selectable
   const categoryOptions = category && !categories.includes(category) ? [...categories, category] : categories;
 

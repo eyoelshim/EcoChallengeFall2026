@@ -213,16 +213,50 @@ export const INITIAL_MOCK_CHALLENGES: Challenge[] = [
   },
 ];
 
-const mockChallengesStore: Challenge[] = INITIAL_MOCK_CHALLENGES.map((c) => ({
+const CHALLENGES_STORAGE_KEY = "greenstep_challenges_store_v2";
+
+let mockChallengesStore: Challenge[] = INITIAL_MOCK_CHALLENGES.map((c) => ({
   ...c,
   actions: [...(c.actions || [])],
 }));
 
+function syncChallengesFromStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(CHALLENGES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        mockChallengesStore = parsed;
+        return;
+      }
+    }
+    window.localStorage.setItem(CHALLENGES_STORAGE_KEY, JSON.stringify(mockChallengesStore));
+  } catch {
+    // Ignore storage access errors
+  }
+}
+
+function persistChallengesToStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CHALLENGES_STORAGE_KEY, JSON.stringify(mockChallengesStore));
+  } catch {
+    // Ignore storage access errors
+  }
+}
+
+if (typeof window !== "undefined") {
+  syncChallengesFromStorage();
+}
+
 export function getMockChallenges(): Challenge[] {
+  syncChallengesFromStorage();
   return [...mockChallengesStore];
 }
 
 export function getMockChallenge(id: string): Challenge | undefined {
+  syncChallengesFromStorage();
   return mockChallengesStore.find((c) => c.id === id);
 }
 
@@ -235,7 +269,8 @@ export function addChallengeAction(
   challengeId: string,
   action: { title: string; description: string; category: string; points: number }
 ): ChallengeActionItem {
-  const challenge = getMockChallenge(challengeId);
+  syncChallengesFromStorage();
+  const challenge = mockChallengesStore.find((c) => c.id === challengeId);
   const newAction: ChallengeActionItem = {
     id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     challengeId,
@@ -248,6 +283,7 @@ export function addChallengeAction(
   if (challenge) {
     if (!challenge.actions) challenge.actions = [];
     challenge.actions.push(newAction);
+    persistChallengesToStorage();
   }
   return newAction;
 }
@@ -256,6 +292,7 @@ export function updateChallengeAction(
   id: string,
   updates: Partial<{ title: string; description: string; category: string; points: number }>
 ): ChallengeActionItem | null {
+  syncChallengesFromStorage();
   for (const challenge of mockChallengesStore) {
     if (!challenge.actions) continue;
     const idx = challenge.actions.findIndex((a) => a.id === id);
@@ -264,6 +301,7 @@ export function updateChallengeAction(
         ...challenge.actions[idx],
         ...updates,
       };
+      persistChallengesToStorage();
       return challenge.actions[idx];
     }
   }
@@ -271,11 +309,13 @@ export function updateChallengeAction(
 }
 
 export function deleteChallengeAction(id: string): boolean {
+  syncChallengesFromStorage();
   for (const challenge of mockChallengesStore) {
     if (!challenge.actions) continue;
     const idx = challenge.actions.findIndex((a) => a.id === id);
     if (idx !== -1) {
       challenge.actions.splice(idx, 1);
+      persistChallengesToStorage();
       return true;
     }
   }
@@ -291,6 +331,7 @@ export function createMockChallenge(data: {
   description: string;
   actions?: Array<{ title: string; description: string; category: string; points: number }>;
 }): Challenge {
+  syncChallengesFromStorage();
   const today = new Date().toISOString().slice(0, 10);
   let status: Status = "Upcoming";
   if (data.startDate <= today && data.endDate >= today) {
@@ -299,7 +340,13 @@ export function createMockChallenge(data: {
     status = "Completed";
   }
 
-  const id = String(mockChallengesStore.length + 1);
+  let maxId = 0;
+  for (const c of mockChallengesStore) {
+    const num = parseInt(c.id, 10);
+    if (!isNaN(num) && num > maxId) maxId = num;
+  }
+  const id = String(maxId + 1);
+
   const challengeActions: ChallengeActionItem[] = (data.actions || []).map((a, i) => ({
     id: `act-${id}-${i + 1}`,
     challengeId: id,
@@ -325,6 +372,7 @@ export function createMockChallenge(data: {
   };
 
   mockChallengesStore.push(newChallenge);
+  persistChallengesToStorage();
   return newChallenge;
 }
 
@@ -553,7 +601,7 @@ export const INITIAL_GLOBAL_ACTIONS: GlobalAction[] = [
   },
   {
     id: "act-glob-2",
-    title: "Ride Public Transit (Bus / Light Rail)",
+    title: "Ride Metro Transit Bus or Light Rail",
     description: "Take Metro Transit bus or light rail to class or work.",
     category: "Transportation",
     points: 35,
@@ -561,7 +609,7 @@ export const INITIAL_GLOBAL_ACTIONS: GlobalAction[] = [
   },
   {
     id: "act-glob-3",
-    title: "Carpool with Colleagues or Students",
+    title: "Carpool with Colleagues or Classmates",
     description: "Share a ride with two or more campus commuters to reduce single-occupancy trips.",
     category: "Transportation",
     points: 25,
@@ -587,7 +635,7 @@ export const INITIAL_GLOBAL_ACTIONS: GlobalAction[] = [
   // Water
   {
     id: "act-glob-6",
-    title: "Turn Off Tap While Brushing Teeth / Lathering",
+    title: "Turn Off Tap While Brushing Teeth or Washing Hands",
     description: "Keep faucet closed when water is not actively rinsing.",
     category: "Water",
     points: 10,
@@ -637,7 +685,7 @@ export const INITIAL_GLOBAL_ACTIONS: GlobalAction[] = [
   },
   {
     id: "act-glob-12",
-    title: "Unplug Phantom Chargers & Vampire Loads",
+    title: "Unplug Phantom Chargers & Electronics",
     description: "Unplug standby laptop docks, phone chargers, and appliances before leaving for the weekend.",
     category: "Energy",
     points: 20,
@@ -645,7 +693,7 @@ export const INITIAL_GLOBAL_ACTIONS: GlobalAction[] = [
   },
   {
     id: "act-glob-13",
-    title: "Cold Water Laundry Wash",
+    title: "Wash Laundry Load in Cold Water",
     description: "Run washing machines on the cold setting to cut water heating electricity.",
     category: "Energy",
     points: 25,
@@ -745,13 +793,47 @@ export const INITIAL_GLOBAL_ACTIONS: GlobalAction[] = [
   },
 ];
 
-const globalActionsStore: GlobalAction[] = [...INITIAL_GLOBAL_ACTIONS];
+const GLOBAL_ACTIONS_STORAGE_KEY = "greenstep_global_actions_store_v2";
+
+let globalActionsStore: GlobalAction[] = [...INITIAL_GLOBAL_ACTIONS];
+
+function syncGlobalActionsFromStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(GLOBAL_ACTIONS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        globalActionsStore = parsed;
+        return;
+      }
+    }
+    window.localStorage.setItem(GLOBAL_ACTIONS_STORAGE_KEY, JSON.stringify(globalActionsStore));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function persistGlobalActionsToStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(GLOBAL_ACTIONS_STORAGE_KEY, JSON.stringify(globalActionsStore));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+if (typeof window !== "undefined") {
+  syncGlobalActionsFromStorage();
+}
 
 export function getGlobalActions(): GlobalAction[] {
+  syncGlobalActionsFromStorage();
   return [...globalActionsStore];
 }
 
 export function getGlobalAction(id: string): GlobalAction | undefined {
+  syncGlobalActionsFromStorage();
   return globalActionsStore.find((a) => a.id === id);
 }
 
@@ -761,8 +843,9 @@ export function createGlobalAction(data: {
   category: string;
   points: number;
 }): GlobalAction {
+  syncGlobalActionsFromStorage();
   const newAction: GlobalAction = {
-    id: `act-glob-${Date.now()}`,
+    id: `act-glob-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     title: data.title.trim(),
     description: data.description.trim(),
     category: data.category,
@@ -770,6 +853,7 @@ export function createGlobalAction(data: {
     createdAt: new Date().toISOString().slice(0, 10),
   };
   globalActionsStore.unshift(newAction);
+  persistGlobalActionsToStorage();
   return newAction;
 }
 
@@ -777,19 +861,23 @@ export function updateGlobalAction(
   id: string,
   data: Partial<{ title: string; description: string; category: string; points: number }>
 ): GlobalAction | null {
+  syncGlobalActionsFromStorage();
   const idx = globalActionsStore.findIndex((a) => a.id === id);
   if (idx === -1) return null;
   globalActionsStore[idx] = {
     ...globalActionsStore[idx],
     ...data,
   };
+  persistGlobalActionsToStorage();
   return globalActionsStore[idx];
 }
 
 export function deleteGlobalAction(id: string): boolean {
+  syncGlobalActionsFromStorage();
   const idx = globalActionsStore.findIndex((a) => a.id === id);
   if (idx === -1) return false;
   globalActionsStore.splice(idx, 1);
+  persistGlobalActionsToStorage();
   return true;
 }
 
@@ -797,16 +885,53 @@ export function deleteGlobalAction(id: string): boolean {
 // Dynamic Challenge Templates Store
 // ============================================================
 
-const dynamicTemplatesStore: TemplatePreset[] = Object.values(TEMPLATE_PRESETS).map((t) => ({
+const TEMPLATES_STORAGE_KEY = "greenstep_templates_store_v2";
+
+let dynamicTemplatesStore: TemplatePreset[] = Object.values(TEMPLATE_PRESETS).map((t) => ({
   ...t,
   actions: [...t.actions],
 }));
 
+function syncTemplatesFromStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(TEMPLATES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        dynamicTemplatesStore = parsed;
+        for (const t of dynamicTemplatesStore) {
+          TEMPLATE_PRESETS[t.id] = t;
+        }
+        return;
+      }
+    }
+    window.localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(dynamicTemplatesStore));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function persistTemplatesToStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(dynamicTemplatesStore));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+if (typeof window !== "undefined") {
+  syncTemplatesFromStorage();
+}
+
 export function getTemplatesList(): TemplatePreset[] {
+  syncTemplatesFromStorage();
   return [...dynamicTemplatesStore];
 }
 
 export function getTemplateById(id: string): TemplatePreset | undefined {
+  syncTemplatesFromStorage();
   return dynamicTemplatesStore.find((t) => t.id === id);
 }
 
@@ -820,11 +945,20 @@ export function createTemplate(data: {
   themeColor?: string;
   actions: Array<{ title: string; description: string; category: string; points: number }>;
 }): TemplatePreset {
-  const id = data.code.toLowerCase().replace(/[^a-z0-9]/g, "-") || `tmpl-${Date.now()}`;
+  syncTemplatesFromStorage();
+  const trimmedCode = data.code.trim().toUpperCase();
+  const baseId = trimmedCode.toLowerCase().replace(/[^a-z0-9]/g, "-") || `tmpl-${Date.now()}`;
+  let id = baseId;
+  let counter = 1;
+  while (dynamicTemplatesStore.some((t) => t.id === id)) {
+    id = `${baseId}-${counter}`;
+    counter++;
+  }
+
   const newTemplate: TemplatePreset = {
     id,
     name: data.name.trim(),
-    code: data.code.trim().toUpperCase(),
+    code: trimmedCode,
     category: data.category,
     duration: data.duration || "1 week",
     days: data.days || 7,
@@ -832,9 +966,11 @@ export function createTemplate(data: {
     themeColor: data.themeColor || "#10B981",
     actions: [...data.actions],
   };
+
   dynamicTemplatesStore.unshift(newTemplate);
   // Also register in TEMPLATE_PRESETS for backwards compatibility
   TEMPLATE_PRESETS[id] = newTemplate;
+  persistTemplatesToStorage();
   return newTemplate;
 }
 
@@ -842,6 +978,7 @@ export function updateTemplate(
   id: string,
   updates: Partial<TemplatePreset>
 ): TemplatePreset | null {
+  syncTemplatesFromStorage();
   const idx = dynamicTemplatesStore.findIndex((t) => t.id === id);
   if (idx === -1) return null;
   dynamicTemplatesStore[idx] = {
@@ -849,14 +986,17 @@ export function updateTemplate(
     ...updates,
   };
   TEMPLATE_PRESETS[id] = dynamicTemplatesStore[idx];
+  persistTemplatesToStorage();
   return dynamicTemplatesStore[idx];
 }
 
 export function deleteTemplate(id: string): boolean {
+  syncTemplatesFromStorage();
   const idx = dynamicTemplatesStore.findIndex((t) => t.id === id);
   if (idx === -1) return false;
   dynamicTemplatesStore.splice(idx, 1);
   delete TEMPLATE_PRESETS[id];
+  persistTemplatesToStorage();
   return true;
 }
 

@@ -41,6 +41,10 @@ type SortOption = "points-desc" | "points-asc" | "title-asc" | "newest";
 
 export default function ActionCatalogPage() {
   const [actions, setActions] = useState<GlobalAction[]>(() => getGlobalActions());
+
+  React.useEffect(() => {
+    setActions(getGlobalActions());
+  }, []);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [sortBy, setSortBy] = useState<SortOption>("points-desc");
