@@ -22,12 +22,8 @@ import {
   Plus,
 } from "lucide-react";
 import Image from "next/image";
-import {
-  allActions,
-  actionsByCategory,
-  findAction,
-  type ActionItem,
-} from "@/lib/actions-data";
+import type { ActionItem } from "@/lib/actions-data";
+import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 
 const MIN_POPULAR_ACTIONS = 5;
 
@@ -40,8 +36,21 @@ type Category =
   | "Food"
   | "Water";
 
+const categoryToEnum: Record<string, string> = {
+  Transportation: "TRANSPORT",
+  Recycling: "RECYCLING",
+  Energy: "ENERGY",
+  Food: "FOOD",
+  Water: "WATER",
+};
+
 export default function LogActionPage() {
   const router = useRouter();
+
+  const [activeChallengeId, setActiveChallengeId] = useState<string>(GLOBAL_CHALLENGE_ID);
+  const [challengeName, setChallengeName] = useState<string | null>(null);
+  const [liveActions, setLiveActions] = useState<ActionItem[]>([]);
+  const [loadingLiveActions, setLoadingLiveActions] = useState(true);
 
   const [selectedCategory, setSelectedCategory] =
     useState<Category>("Transportation");
@@ -51,45 +60,102 @@ export default function LogActionPage() {
   const [recentActions, setRecentActions] = useState<ActionItem[]>([]);
   const [fetchingDynamic, setFetchingDynamic] = useState(false);
 
-  function fillPopularActions(items: ActionItem[]) {
+  // 1. Read active challenge from local storage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("activeChallengeId") || GLOBAL_CHALLENGE_ID;
+      setActiveChallengeId(saved);
+    }
+  }, []);
+
+  // 2. Fetch live challenge actions from live database
+  useEffect(() => {
+    setLoadingLiveActions(true);
+    const cId = activeChallengeId || GLOBAL_CHALLENGE_ID;
+    fetch(`/api/actions/catalog?challengeId=${encodeURIComponent(cId)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.actions && Array.isArray(data.actions)) {
+          setLiveActions(data.actions);
+        }
+        if (data.challenge?.name) {
+          setChallengeName(data.challenge.name);
+        } else if (cId === GLOBAL_CHALLENGE_ID) {
+          setChallengeName("GreenStep Global Challenge");
+        } else {
+          setChallengeName(null);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load actions catalog:", err);
+      })
+      .finally(() => setLoadingLiveActions(false));
+  }, [activeChallengeId]);
+
+  function fillPopularActions(items: ActionItem[], pool: ActionItem[]) {
     if (items.length >= MIN_POPULAR_ACTIONS) {
       return items;
     }
 
-    const seen = new Set(items.map((item) => item.actionType));
-    const fallback = [...allActions]
+    const seen = new Set(items.map((item) => item.actionType.toLowerCase()));
+    const fallback = [...pool]
       .sort((a, b) => b.points - a.points)
-      .filter((item) => !seen.has(item.actionType))
+      .filter((item) => !seen.has(item.actionType.toLowerCase()))
       .slice(0, MIN_POPULAR_ACTIONS - items.length);
 
     return [...items, ...fallback];
   }
 
+  // 3. Dynamic Popular and Recent feeds
   useEffect(() => {
     if (selectedCategory === "Popular") {
       setFetchingDynamic(true);
       fetch("/api/actions?filter=popular")
         .then((r) => r.json())
-        .then((data: { actionType: string }[]) => {
+        .then((data: { actionType: string; category?: string }[]) => {
           const items = data
-            .map((d) => findAction(d.actionType))
+            .map((d) => {
+              const found = liveActions.find(
+                (a) => a.actionType.toLowerCase() === d.actionType.toLowerCase()
+              );
+              if (found) return found;
+              return {
+                title: d.actionType,
+                actionType: d.actionType,
+                description: "Popular community action",
+                category: (d.category as "TRANSPORT" | "RECYCLING" | "ENERGY" | "FOOD" | "WATER") || "TRANSPORT",
+                points: 15,
+              } as ActionItem;
+            })
             .filter((a): a is ActionItem => Boolean(a));
-          setPopularActions(fillPopularActions(items));
+          setPopularActions(fillPopularActions(items, liveActions));
         })
         .finally(() => setFetchingDynamic(false));
     } else if (selectedCategory === "Recent") {
       setFetchingDynamic(true);
       fetch("/api/actions?filter=recent")
         .then((r) => r.json())
-        .then((data: { actionType: string }[]) => {
+        .then((data: { actionType: string; category?: string }[]) => {
           const items = data
-            .map((d) => findAction(d.actionType))
+            .map((d) => {
+              const found = liveActions.find(
+                (a) => a.actionType.toLowerCase() === d.actionType.toLowerCase()
+              );
+              if (found) return found;
+              return {
+                title: d.actionType,
+                actionType: d.actionType,
+                description: "Recently logged action",
+                category: (d.category as "TRANSPORT" | "RECYCLING" | "ENERGY" | "FOOD" | "WATER") || "TRANSPORT",
+                points: 15,
+              } as ActionItem;
+            })
             .filter((a): a is ActionItem => Boolean(a));
           setRecentActions(items);
         })
         .finally(() => setFetchingDynamic(false));
     }
-  }, [selectedCategory]);
+  }, [selectedCategory, liveActions]);
 
   const categoryTiles: {
     name: Category;
@@ -104,27 +170,20 @@ export default function LogActionPage() {
     { name: "Water", icon: Droplet },
   ];
 
-  const staticMap: Record<string, ActionItem[]> = {
-    Transportation: actionsByCategory.Transportation,
-    Recycling: actionsByCategory.Recycling,
-    Energy: actionsByCategory.Energy,
-    Food: actionsByCategory.Food,
-    Water: actionsByCategory.Water,
-  };
-
+  const targetCategoryEnum = categoryToEnum[selectedCategory];
   const baseActions: ActionItem[] =
     selectedCategory === "Popular"
       ? popularActions
       : selectedCategory === "Recent"
         ? recentActions
-        : (staticMap[selectedCategory] ?? []);
+        : liveActions.filter((a) => a.category === targetCategoryEnum);
 
   let filteredActions = baseActions.filter((action) => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;
     return (
       action.title.toLowerCase().includes(query) ||
-      action.description.toLowerCase().includes(query)
+      (action.description && action.description.toLowerCase().includes(query))
     );
   });
 
@@ -143,24 +202,19 @@ export default function LogActionPage() {
   }
 
   const categoryIconColor: Record<string, { bg: string; icon: string }> = {
-    Transportation: { bg: "bg-blue-200", icon: "text-blue-600" },
-    Recycling: { bg: "bg-green-200", icon: "text-green-700" },
-    Energy: { bg: "bg-yellow-200", icon: "text-yellow-700" },
-    Food: { bg: "bg-orange-200", icon: "text-orange-700" },
-    Water: { bg: "bg-blue-100", icon: "text-blue-700" },
-    Popular: { bg: "bg-gray-200", icon: "text-gray-600" },
-    Recent: { bg: "bg-gray-200", icon: "text-gray-600" },
+    TRANSPORT: { bg: "bg-blue-200", icon: "text-blue-600" },
+    RECYCLING: { bg: "bg-green-200", icon: "text-green-700" },
+    ENERGY: { bg: "bg-yellow-200", icon: "text-yellow-700" },
+    FOOD: { bg: "bg-orange-200", icon: "text-orange-700" },
+    WATER: { bg: "bg-blue-100", icon: "text-blue-700" },
   };
 
   function getIconColors(action: ActionItem) {
-    const cat =
-      selectedCategory === "Popular" || selectedCategory === "Recent"
-        ? (Object.entries(staticMap).find(([, items]) =>
-            items.some((i) => i.actionType === action.actionType),
-          )?.[0] ?? "Transportation")
-        : selectedCategory;
     return (
-      categoryIconColor[cat] ?? { bg: "bg-gray-200", icon: "text-gray-600" }
+      categoryIconColor[action.category] ?? {
+        bg: "bg-gray-200",
+        icon: "text-gray-600",
+      }
     );
   }
 
@@ -241,7 +295,7 @@ export default function LogActionPage() {
       <main className="flex-1 w-full max-w-[1240px] mx-auto px-4 lg:px-8 py-4 pb-24 lg:pb-12">
         <div className="w-full max-w-[1100px] mx-auto">
           <div className="rounded-[32px] bg-white border border-[#ececea] p-6 lg:p-8 shadow-sm">
-            <div className="mb-7 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between">
               <Link
                 href="/dashboard"
                 className="min-h-11 rounded-full border border-[#ececea] bg-[#f8f8f7] px-5 py-3 text-[14px] font-semibold text-[#374151] hover:text-[#111827]"
@@ -253,6 +307,15 @@ export default function LogActionPage() {
               </h1>
               <div className="w-[64px]" />
             </div>
+
+            {challengeName && (
+              <div className="mb-5 flex items-center">
+                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 border border-emerald-200/80 px-3.5 py-1 text-xs font-semibold text-emerald-800">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Challenge: {challengeName}</span>
+                </span>
+              </div>
+            )}
 
             <div className="relative mb-4">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9ca3af]" />
@@ -327,9 +390,10 @@ export default function LogActionPage() {
             <div className="mb-5 border-t border-[#ddddda]" />
 
             <div className="grid max-h-[420px] gap-2 overflow-y-auto rounded-[20px] border border-[#e5e7eb] bg-gray-100 p-2 lg:max-h-[560px] lg:grid-cols-2">
-              {fetchingDynamic ? (
-                <div className="rounded-[22px] border border-[#ececea] bg-white px-5 py-8 text-center">
-                  <p className="text-[15px] text-[#6b7280]">Loading...</p>
+              {loadingLiveActions || fetchingDynamic ? (
+                <div className="col-span-full rounded-[22px] border border-[#ececea] bg-white px-5 py-12 text-center">
+                  <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent mb-2" />
+                  <p className="text-[14px] text-[#6b7280]">Loading actions for active challenge...</p>
                 </div>
               ) : filteredActions.length > 0 ? (
                 filteredActions.map((action) => {
@@ -337,7 +401,7 @@ export default function LogActionPage() {
                   const colors = getIconColors(action);
                   return (
                     <button
-                      key={action.actionType}
+                      key={`${action.category}-${action.actionType}`}
                       type="button"
                       onClick={() =>
                         router.push(
@@ -377,12 +441,12 @@ export default function LogActionPage() {
                   );
                 })
               ) : (
-                <div className="rounded-[22px] border border-[#ececea] bg-white px-5 py-8 text-center">
+                <div className="col-span-full rounded-[22px] border border-[#ececea] bg-white px-5 py-8 text-center">
                   <p className="text-[15px] font-medium text-[#374151]">
                     {selectedCategory === "Popular" ||
                     selectedCategory === "Recent"
                       ? "No actions logged yet."
-                      : "No actions available yet"}
+                      : "No actions available in this category for the active challenge."}
                   </p>
                   {selectedCategory === "Popular" && (
                     <p className="mt-2 text-[13px] text-[#6b7280]">

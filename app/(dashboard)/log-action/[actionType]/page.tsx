@@ -15,7 +15,7 @@ import {
   ImagePlus,
   X,
 } from "lucide-react";
-import { findAction } from "@/lib/actions-data";
+import { findAction, type ActionItem } from "@/lib/actions-data";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 
 const categoryMeta: Record<
@@ -46,6 +46,8 @@ export default function ActionDetailPage() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const submitLockRef = useRef(false);
 
+  const [action, setAction] = useState<ActionItem | null>(null);
+  const [fetchingAction, setFetchingAction] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeChallengeId, setActiveChallengeId] = useState<string>(GLOBAL_CHALLENGE_ID);
@@ -53,32 +55,77 @@ export default function ActionDetailPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [showCelebration, setShowCelebration] = useState(false);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setActiveChallengeId(localStorage.getItem("activeChallengeId") || GLOBAL_CHALLENGE_ID);
-    }
-  }, []);
+  const actionTypeParam = decodeURIComponent(params.actionType as string);
 
-  const actionType = decodeURIComponent(params.actionType as string);
-  const action = findAction(actionType);
+  useEffect(() => {
+    let mounted = true;
+    const cId = localStorage.getItem("activeChallengeId") || GLOBAL_CHALLENGE_ID;
+    setActiveChallengeId(cId);
+
+    fetch(
+      `/api/actions/catalog?challengeId=${encodeURIComponent(
+        cId
+      )}&actionType=${encodeURIComponent(actionTypeParam)}`
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (!mounted) return;
+        if (data.action) {
+          setAction(data.action);
+        } else {
+          // Fallback to static findAction
+          const fallback = findAction(actionTypeParam);
+          setAction(fallback || null);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load action details from catalog:", err);
+        if (!mounted) return;
+        const fallback = findAction(actionTypeParam);
+        setAction(fallback || null);
+      })
+      .finally(() => {
+        if (mounted) setFetchingAction(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [actionTypeParam]);
+
+  if (fetchingAction) {
+    return (
+      <div className="min-h-screen bg-[#f5f5f3] px-4 py-12 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-3 border-emerald-600 border-t-transparent mb-3" />
+          <p className="text-gray-600 text-sm font-medium">Loading action details...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!action) {
     return (
       <div className="min-h-screen bg-white px-4 py-6 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-500 text-lg mb-4">Action not found.</p>
-          <Link href="/log-action" className="text-[#0b5d1e] font-medium underline">Go back</Link>
+          <Link href="/log-action" className="text-[#0b5d1e] font-medium underline">
+            Go back to actions
+          </Link>
         </div>
       </div>
     );
   }
 
   const meta = categoryMeta[action.category] ?? {
-    bg: "bg-gray-50", iconBg: "bg-gray-200", iconColor: "text-gray-600", label: action.category,
+    bg: "bg-gray-50",
+    iconBg: "bg-gray-200",
+    iconColor: "text-gray-600",
+    label: action.category,
   };
 
   // Dynamic total points
-  const noteBonus  = note.trim() ? 10 : 0;
+  const noteBonus = note.trim() ? 10 : 0;
   const imageBonus = imagePreview ? 15 : 0;
   const totalPoints = action.points + noteBonus + imageBonus;
 
@@ -94,7 +141,7 @@ export default function ActionDetailPage() {
   }
 
   async function handleLog() {
-    if (submitLockRef.current || loading) {
+    if (submitLockRef.current || loading || !action) {
       return;
     }
 
@@ -112,9 +159,9 @@ export default function ActionDetailPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          category: action!.category,
-          actionType: action!.actionType,
-          points: action!.points,
+          category: action.category,
+          actionType: action.actionType,
+          points: action.points,
           note: note.trim() || undefined,
           imageUrl: imagePreview || undefined,
           ...(scopedChallengeId ? { challengeId: scopedChallengeId } : {}),
@@ -127,7 +174,7 @@ export default function ActionDetailPage() {
           data?.error ||
             (res.status === 409
               ? "This action was already logged a moment ago."
-              : "Failed to log action."),
+              : "Failed to log action.")
         );
         return;
       }
@@ -197,7 +244,6 @@ export default function ActionDetailPage() {
         </div>
       )}
       <div className="mx-auto grid w-full max-w-[430px] gap-5 rounded-[32px] bg-white px-6 py-6 lg:max-w-[1100px] lg:grid-cols-[0.9fr_1.1fr] lg:gap-8 lg:px-8 lg:py-8">
-
         {/* Header */}
         <div className="flex items-center justify-between lg:col-span-2">
           <Link
@@ -212,8 +258,12 @@ export default function ActionDetailPage() {
 
         <div className="space-y-5">
           {/* Icon + category */}
-          <div className={`flex flex-col items-center rounded-[24px] ${meta.bg} py-8 lg:min-h-[280px] lg:justify-center`}>
-            <div className={`mb-3 flex h-20 w-20 items-center justify-center rounded-full ${meta.iconBg}`}>
+          <div
+            className={`flex flex-col items-center rounded-[24px] ${meta.bg} py-8 lg:min-h-[280px] lg:justify-center`}
+          >
+            <div
+              className={`mb-3 flex h-20 w-20 items-center justify-center rounded-full ${meta.iconBg}`}
+            >
               <CategoryIcon category={action.category} className={`h-10 w-10 ${meta.iconColor}`} />
             </div>
             <span className="text-[12px] font-semibold uppercase tracking-widest text-[#6b7280]">
@@ -223,14 +273,20 @@ export default function ActionDetailPage() {
 
           {/* Title + description */}
           <div className="text-center">
-            <h2 className="text-[24px] font-bold text-[#111827] mb-2 lg:text-[30px]">{action.title}</h2>
-            <p className="text-[15px] text-[#6b7280] lg:text-[16px]">{action.description}</p>
+            <h2 className="text-[24px] font-bold text-[#111827] mb-2 lg:text-[30px]">
+              {action.title}
+            </h2>
+            <p className="text-[15px] text-[#6b7280] lg:text-[16px]">
+              {action.description}
+            </p>
           </div>
 
           {/* Points badge — updates live */}
           <div className="flex items-center justify-center gap-3">
             <div className="flex items-center gap-2 rounded-full bg-[#dcfce7] px-6 py-3">
-              <span className="text-[28px] font-bold text-[#166534]">+{totalPoints}</span>
+              <span className="text-[28px] font-bold text-[#166534]">
+                +{totalPoints}
+              </span>
               <span className="text-[14px] font-medium text-[#166534]">pts</span>
             </div>
             {(noteBonus > 0 || imageBonus > 0) && (
@@ -282,6 +338,7 @@ export default function ActionDetailPage() {
                   className="w-full rounded-[16px] object-cover max-h-[200px]"
                 />
                 <button
+                  type="button"
                   onClick={() => setImagePreview(null)}
                   className="absolute top-2 right-2 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition"
                 >

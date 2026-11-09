@@ -1,3 +1,12 @@
+/**
+ * @deprecated
+ * Static action definitions are deprecated for participant logging as of Sprint 3 (Issue #53).
+ * Actions are now served dynamically from the Prisma database via `app/api/actions/catalog/route.ts`
+ * using the live `ChallengeAction` and `ActionCatalog` models.
+ *
+ * This file is retained solely as a legacy fallback and typing reference.
+ */
+
 export type ActionItem = {
   title: string;
   description: string;
