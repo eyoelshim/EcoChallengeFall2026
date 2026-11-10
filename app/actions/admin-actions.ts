@@ -3,11 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { ActionCategory, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/authz";
+import { requireAdmin, requireSuperAdmin } from "@/lib/authz";
 import { normalizeActionCategory } from "@/lib/categories";
 
-const CHALLENGES_PATH = "/admin/admin/challenges";
-const ACTIONS_PATH = "/admin/admin/actions";
+const CHALLENGES_PATH = "/admin/challenges";
+const ACTIONS_PATH = "/admin/actions";
 
 export interface GlobalActionItem {
   id: string;
@@ -132,10 +132,10 @@ export async function updateGlobalAction(
   };
 }
 
+// Permanent deletion is SuperAdmin-only (Nov 5 2026 stakeholder decision)
 export async function deleteGlobalAction(id: string): Promise<{ success: boolean; error?: string }> {
-  await requireAdmin();
-
   try {
+    await requireSuperAdmin();
     await db.actionCatalog.delete({
       where: { id },
     });
@@ -312,9 +312,8 @@ export async function removeActionFromChallenge(
   challengeId: string,
   actionCatalogId: string
 ): Promise<{ success: boolean; error?: string }> {
-  await requireAdmin();
-
   try {
+    await requireSuperAdmin();
     await db.challengeAction.delete({
       where: {
         challengeId_actionCatalogId: {

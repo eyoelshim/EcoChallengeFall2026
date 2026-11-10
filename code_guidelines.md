@@ -227,7 +227,7 @@ export async function createChallenge(
 ❌ **Incorrect (Snake_case, PascalCase for variables, inconsistent casing):**
 
 ```ts
-// app/admin/admin/challenges/[id]/actions/page.tsx
+// app/admin/challenges/[id]/actions/page.tsx
 const Challenge_Id = params.id;
 const Action_list = await getActions(Challenge_Id);
 function Handle_Click(User_Input: string) { ... }
@@ -236,7 +236,7 @@ function Handle_Click(User_Input: string) { ... }
 ✅ **Correct (Consistent lowerCamelCase across identifiers):**
 
 ```ts
-// app/admin/admin/challenges/[id]/actions/page.tsx
+// app/admin/challenges/[id]/actions/page.tsx
 const challengeId = params.id;
 const actionList = await getActions(challengeId);
 function handleClick(userInput: string): void { ... }
@@ -592,7 +592,7 @@ export async function createGlobalAction(
     },
   });
 
-  revalidatePath("/admin/admin/actions");
+  revalidatePath("/admin/actions");
   return formatActionItem(createdAction);
 }
 ```
