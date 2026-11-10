@@ -5,6 +5,8 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { Prisma, UserRole, UserStatus } from "@prisma/client";
 import { db } from "@/lib/db";
+import { MAX_INVITES_PER_BATCH, parseEmailList, type InviteResult } from "@/lib/email-list";
+import { appUrl, inviteParticipants, revokePendingInvitations } from "@/lib/invitations";
 import {
   CLERK_ADMIN_ROLE,
   CLERK_SUPERADMIN_ROLE,
@@ -252,6 +254,65 @@ export async function deleteUserPermanent(userId: string): Promise<MutationResul
   return toResult(() => applyUserDeletion(userId));
 }
 
+export type InvitationBatchResult = {
+  error?: string;
+  results?: InviteResult[];
+  invalid?: string[];
+};
+
+/**
+ * Sends Clerk invitation emails to a pasted list of addresses and pre-creates pending
+ * users in Neon, optionally pre-assigned to a department.
+ *
+ * @param input.emails Raw text of addresses separated by commas, semicolons, spaces, or newlines.
+ * @param input.departmentId Department to assign every invitee to; omit to let them pick at onboarding.
+ * @returns Per-address outcomes plus any tokens that were not valid emails, or `{ error }`.
+ *
+ * Intent: Any admin may invite (inviting is not a privileged action). Invitees join as General
+ * Users; promotions happen afterwards on the user's profile. Existing members are skipped, and
+ * pending invitees get a fresh email, which is how expired invitations are renewed.
+ */
+export async function createAdminUserInvitations(input: {
+  emails: string;
+  departmentId?: string;
+}): Promise<InvitationBatchResult> {
+  try {
+    const actor = await requireAdminActor();
+    const { valid, invalid } = parseEmailList(input.emails);
+    if (valid.length === 0) return { error: "Enter at least one valid email address", invalid };
+    if (valid.length > MAX_INVITES_PER_BATCH) {
+      return { error: `You can invite up to ${MAX_INVITES_PER_BATCH} people at a time`, invalid };
+    }
+
+    const results = await inviteParticipants(valid, input.departmentId || null, await appUrl("/sign-up"));
+    const invitedCount = results.filter((r) => r.status === "invited").length;
+
+    if (invitedCount > 0) {
+      await db.activityLog.create({
+        data: {
+          userId: actor?.id,
+          action: "Users Invited",
+          details: `${invitedCount} invitation${invitedCount === 1 ? "" : "s"} sent by ${actor?.name ?? "Admin"}`,
+        },
+      });
+    }
+
+    revalidatePath(USERS_PATH);
+    return { results, invalid };
+  } catch (err) {
+    console.error(err);
+    return { error: err instanceof Error ? err.message : "Something went wrong" };
+  }
+}
+
+/**
+ * Departments for invite and onboarding pickers, alphabetically.
+ */
+export async function getDepartmentOptions(): Promise<{ id: string; name: string }[]> {
+  await requireAdminActor();
+  return db.department.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
+}
+
 async function applyUserRole(userId: string, role: UserRole) {
   const { userId: clerkId } = await auth();
   if (!clerkId) throw new Error("Unauthorized");
@@ -263,6 +324,7 @@ async function applyUserRole(userId: string, role: UserRole) {
   const target = await db.user.findUnique({ where: { id: userId } });
   if (!target) throw new Error("User not found");
   if (target.clerkId === clerkId) throw new Error("You can't change your own role");
+  if (!target.clerkId) throw new Error("This user hasn't accepted their invitation yet");
   if (isEnvSuperAdminEmail(target.email)) {
     throw new Error("This user is a SuperAdmin via SUPERADMIN_EMAILS; change it there");
   }
@@ -297,9 +359,12 @@ async function applyUserStatus(userId: string, status: UserStatus) {
   const actor = await requireAdminActor();
   if (!isUserStatus(status)) throw new Error("Invalid status");
 
+  if (status === UserStatus.INVITED) throw new Error("Invalid status");
+
   const target = await db.user.findUnique({ where: { id: userId } });
   if (!target) throw new Error("User not found");
   if (actor && target.id === actor.id) throw new Error("You can't change your own status");
+  if (!target.clerkId) throw new Error("This user hasn't accepted their invitation yet");
   if (target.status === status) return;
   if (effectiveRole(target) === UserRole.SUPERADMIN && !(await isCurrentUserSuperAdmin())) {
     throw new Error("Forbidden: only SuperAdmins can change a SuperAdmin's status");
@@ -343,11 +408,16 @@ async function applyUserDeletion(userId: string) {
 
   // Delete the Clerk login first, otherwise the dashboard would recreate the DB row on next sign-in.
   // A 404 means it is already gone (seeded users, or a retry after a failed DB step), so carry on.
-  try {
-    const client = await clerkClient();
-    await client.users.deleteUser(target.clerkId);
-  } catch (err) {
-    if (!(isClerkAPIResponseError(err) && err.status === 404)) throw err;
+  // Invitees have no login yet, so revoke their pending invitation instead.
+  if (target.clerkId) {
+    try {
+      const client = await clerkClient();
+      await client.users.deleteUser(target.clerkId);
+    } catch (err) {
+      if (!(isClerkAPIResponseError(err) && err.status === 404)) throw err;
+    }
+  } else {
+    await revokePendingInvitations(target.email);
   }
 
   await db.$transaction([

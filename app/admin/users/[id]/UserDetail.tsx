@@ -107,8 +107,10 @@ export default function UserDetail({ user, isSuperAdmin }: { user: AdminUserDeta
   ];
 
   const roleOptions: UserRole[] = isSuperAdmin ? ROLE_OPTIONS : ["GENERAL_USER", "ADMIN"];
-  const canEditRole = !user.roleManagedByEnv && (isSuperAdmin || user.role === "GENERAL_USER");
-  const canChangeStatus = isSuperAdmin || user.role !== "SUPERADMIN";
+  // Invitees have no Clerk account yet, so there is no role or sign-in to change until they sign up
+  const isInvited = user.status === "INVITED";
+  const canEditRole = !isInvited && !user.roleManagedByEnv && (isSuperAdmin || user.role === "GENERAL_USER");
+  const canChangeStatus = !isInvited && (isSuperAdmin || user.role !== "SUPERADMIN");
 
   const visibleParticipation = expandedParticipation ? user.actions : user.actions.slice(0, 5);
 
@@ -154,6 +156,12 @@ export default function UserDetail({ user, isSuperAdmin }: { user: AdminUserDeta
                 {user.email} · {user.department ?? "No department"} · Last action:{" "}
                 {formatDate(user.lastActionDate)}
               </p>
+              {isInvited && (
+                <p className="text-xs text-sky-700 mt-1">
+                  Invitation sent {formatDate(user.joinedAt)}. Waiting for them to sign up; re-invite from
+                  Invite Users to resend the email.
+                </p>
+              )}
             </div>
           </div>
 
@@ -183,7 +191,25 @@ export default function UserDetail({ user, isSuperAdmin }: { user: AdminUserDeta
                 )}
               </button>
             )}
-            {isSuperAdmin && !user.roleManagedByEnv && (
+            {isSuperAdmin && isInvited && (
+              <ConfirmActionButton
+                label="Revoke Invitation"
+                title="Revoke Invitation?"
+                subtitle="Their email link will stop working"
+                description={
+                  <p>
+                    <strong className="text-slate-900">{user.email}</strong> will be removed from the directory
+                    and their invitation link revoked. You can invite them again later.
+                  </p>
+                }
+                confirmLabel="Revoke Invitation"
+                pendingLabel="Revoking..."
+                tone="danger"
+                action={deleteUserPermanent.bind(null, user.id)}
+                redirectTo="/admin/users"
+              />
+            )}
+            {isSuperAdmin && !isInvited && !user.roleManagedByEnv && (
               <ConfirmActionButton
                 label="Delete Permanently"
                 title="Permanently Delete User?"
