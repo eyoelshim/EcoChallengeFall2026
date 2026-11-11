@@ -118,6 +118,7 @@ export async function getAdminChallengeById(id: string) {
     email: uc.user.email,
     team: teamByUser.get(uc.user.id) ?? null,
     joinedAt: uc.createdAt,
+    deactivatedAt: uc.deactivatedAt,
   }));
   const nameByUser = new Map(participants.map((p) => [p.id, p.name]));
 
@@ -466,5 +467,54 @@ export async function deleteChallenge(id: string): Promise<{ error?: string }> {
   }
 
   revalidatePath(CHALLENGES_PATH);
+  return {};
+}
+
+/**
+ * Deactivates or reactivates one participant within one challenge.
+ *
+ * @param challengeId Challenge the participant is enrolled in.
+ * @param userId Database id of the participant.
+ * @param active True to reactivate, false to deactivate.
+ * @returns An empty object on success, or `{ error }` with a client-safe message.
+ *
+ * Intent: Per-challenge deactivation (Nov 5 2026 decision, clarified): the participant can
+ * still sign in and keeps their points, team, and other challenges, but the participant APIs
+ * reject new actions and team changes here. Reversible, so any admin may do it.
+ */
+export async function setChallengeParticipantActive(
+  challengeId: string,
+  userId: string,
+  active: boolean
+): Promise<{ error?: string }> {
+  try {
+    const actor = await requireAdminActor();
+
+    const enrollment = await db.userChallenge.findUnique({
+      where: { userId_challengeId: { userId, challengeId } },
+      include: { user: { select: { name: true } }, challenge: { select: { name: true } } },
+    });
+    if (!enrollment || challengeId === GLOBAL_CHALLENGE_ID) throw new Error("Participant not found in this challenge");
+    if (!!enrollment.deactivatedAt === !active) return {};
+
+    await db.$transaction([
+      db.userChallenge.update({
+        where: { id: enrollment.id },
+        data: { deactivatedAt: active ? null : new Date() },
+      }),
+      db.activityLog.create({
+        data: {
+          userId,
+          action: active ? "Challenge Participant Reactivated" : "Challenge Participant Deactivated",
+          details: `${enrollment.user.name} in ${enrollment.challenge.name} by ${actor?.name ?? "Admin"}`,
+        },
+      }),
+    ]);
+  } catch (err) {
+    console.error(err);
+    return { error: err instanceof Error ? err.message : "Something went wrong" };
+  }
+
+  revalidatePath(`${CHALLENGES_PATH}/${challengeId}`);
   return {};
 }

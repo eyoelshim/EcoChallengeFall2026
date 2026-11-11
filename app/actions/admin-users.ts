@@ -235,10 +235,6 @@ export async function updateUserRole(userId: string, role: UserRole): Promise<Mu
   return toResult(() => applyUserRole(userId, role));
 }
 
-export async function updateUserStatus(userId: string, status: UserStatus): Promise<MutationResult> {
-  return toResult(() => applyUserStatus(userId, status));
-}
-
 /**
  * Permanently purges a user account: their Clerk login, logged actions (points),
  * enrollments, team memberships, and team requests.
@@ -347,46 +343,6 @@ async function applyUserRole(userId: string, role: UserRole) {
         userId,
         action: "Role Changed",
         details: `${target.role} → ${role} by ${actor?.name ?? "SuperAdmin"}`,
-      },
-    }),
-  ]);
-
-  revalidatePath(USERS_PATH);
-  revalidatePath(`${USERS_PATH}/${userId}`);
-}
-
-async function applyUserStatus(userId: string, status: UserStatus) {
-  const actor = await requireAdminActor();
-  if (!isUserStatus(status)) throw new Error("Invalid status");
-
-  if (status === UserStatus.INVITED) throw new Error("Invalid status");
-
-  const target = await db.user.findUnique({ where: { id: userId } });
-  if (!target) throw new Error("User not found");
-  if (actor && target.id === actor.id) throw new Error("You can't change your own status");
-  if (!target.clerkId) throw new Error("This user hasn't accepted their invitation yet");
-  if (target.status === status) return;
-  if (effectiveRole(target) === UserRole.SUPERADMIN && !(await isCurrentUserSuperAdmin())) {
-    throw new Error("Forbidden: only SuperAdmins can change a SuperAdmin's status");
-  }
-
-  // A Clerk ban blocks sign-in and ends active sessions everywhere (participant app, console, APIs).
-  // Done first so a Clerk failure leaves the DB unchanged; 404 means a seeded user with no Clerk login.
-  try {
-    const client = await clerkClient();
-    if (status === UserStatus.DEACTIVATED) await client.users.banUser(target.clerkId);
-    else await client.users.unbanUser(target.clerkId);
-  } catch (err) {
-    if (!(isClerkAPIResponseError(err) && err.status === 404)) throw err;
-  }
-
-  await db.$transaction([
-    db.user.update({ where: { id: userId }, data: { status } }),
-    db.activityLog.create({
-      data: {
-        userId,
-        action: status === UserStatus.DEACTIVATED ? "User Deactivated" : "User Reactivated",
-        details: `by ${actor?.name ?? "Admin"}`,
       },
     }),
   ]);

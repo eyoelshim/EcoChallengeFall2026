@@ -2,7 +2,8 @@
 import type { ActionCategory, UserRole, UserStatus } from "@prisma/client";
 
 export const ROLE_OPTIONS: UserRole[] = ["SUPERADMIN", "ADMIN", "GENERAL_USER"];
-export const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "INVITED", "DEACTIVATED"];
+// DEACTIVATED is no longer used: deactivation is per challenge (UserChallenge.deactivatedAt)
+export const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "INVITED"];
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   SUPERADMIN: "SuperAdmin",

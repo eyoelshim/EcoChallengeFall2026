@@ -7,6 +7,7 @@ import type { ChallengeStatus } from "@prisma/client";
 import { deleteChallenge, getAdminChallengeById, updateChallengeStatus } from "@/app/actions/admin-challenges";
 import { deleteTeam } from "@/app/actions/admin-groups";
 import { ConfirmActionButton } from "@/components/admin/ConfirmActionButton";
+import { ParticipantStatusButton } from "./ParticipantStatusButton";
 import { isCurrentUserSuperAdmin } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +54,8 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
   const participantCountText = String(challenge.participantCount);
   const hasLeaderboard = challenge.leaderboard.length > 0;
   const actionsCount = challenge.actions.length;
+  const pointsByUser = new Map(challenge.leaderboard.map((row) => [row.userId, row.points]));
+  const deactivatedCount = challenge.participants.filter((p) => p.deactivatedAt).length;
 
   return (
     <div className="space-y-6">
@@ -225,68 +228,109 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
           )}
         </Section>
 
-        <Section title="Participant Roster">
-          {challenge.participants.length === 0 ? (
-            <p className="text-sm text-slate-500">No one has joined this challenge yet.</p>
+        <Section title={`Teams (${challenge.teams.length})`}>
+          {challenge.teams.length === 0 ? (
+            <p className="text-sm text-slate-500">No teams have been created in this challenge yet.</p>
           ) : (
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="text-left text-slate-500">
-                  <th className="pb-2 font-medium">Name</th>
-                  <th className="pb-2 font-medium">Email</th>
-                  <th className="pb-2 font-medium">Team</th>
-                  <th className="pb-2 font-medium whitespace-nowrap">Joined</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {challenge.participants.map((person) => (
-                  <tr key={person.id}>
-                    <td className="py-2 pr-3 text-slate-900 whitespace-nowrap">{person.name}</td>
-                    <td className="py-2 pr-3 text-slate-500">{person.email}</td>
-                    <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">{person.team ?? "—"}</td>
-                    <td className="py-2 text-slate-500 whitespace-nowrap">{formatDate(person.joinedAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ul className="divide-y divide-slate-100">
+              {challenge.teams.map((team) => (
+                <li key={team.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{team.name}</p>
+                    <p className="text-xs text-slate-500">
+                      {team.memberCount} {team.memberCount === 1 ? "member" : "members"}
+                    </p>
+                  </div>
+                  {isSuperAdmin && (
+                    <ConfirmActionButton
+                      label="Delete Team"
+                      title="Permanently Delete Team?"
+                      subtitle="This cannot be undone"
+                      description={
+                        <p>
+                          Deleting <strong className="text-slate-900">{team.name}</strong> removes its{" "}
+                          {team.memberCount} memberships. Members stay in the challenge and keep the points
+                          they earned.
+                        </p>
+                      }
+                      confirmLabel="Delete Permanently"
+                      pendingLabel="Deleting..."
+                      tone="danger"
+                      action={deleteTeam.bind(null, team.id)}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </Section>
       </div>
 
-      <Section title={`Teams (${challenge.teams.length})`}>
-        {challenge.teams.length === 0 ? (
-          <p className="text-sm text-slate-500">No teams have been created in this challenge yet.</p>
+      <Section title={`Participant Roster (${challenge.participants.length})`}>
+        {deactivatedCount > 0 && (
+          <p className="-mt-2 mb-3 text-xs text-slate-500">
+            {deactivatedCount} deactivated · they can still sign in but can&apos;t log actions or change teams here.
+          </p>
+        )}
+        {challenge.participants.length === 0 ? (
+          <p className="text-sm text-slate-500">No one has joined this challenge yet.</p>
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {challenge.teams.map((team) => (
-              <li key={team.id} className="flex items-center justify-between gap-3 py-2.5">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{team.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {team.memberCount} {team.memberCount === 1 ? "member" : "members"}
-                  </p>
-                </div>
-                {isSuperAdmin && (
-                  <ConfirmActionButton
-                    label="Delete Team"
-                    title="Permanently Delete Team?"
-                    subtitle="This cannot be undone"
-                    description={
-                      <p>
-                        Deleting <strong className="text-slate-900">{team.name}</strong> removes its{" "}
-                        {team.memberCount} memberships. Members stay in the challenge and keep the points
-                        they earned.
-                      </p>
-                    }
-                    confirmLabel="Delete Permanently"
-                    pendingLabel="Deleting..."
-                    tone="danger"
-                    action={deleteTeam.bind(null, team.id)}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500">
+                <th className="pb-2 font-medium">Name</th>
+                <th className="pb-2 font-medium">Email</th>
+                <th className="pb-2 font-medium">Team</th>
+                <th className="pb-2 font-medium whitespace-nowrap">Joined</th>
+                <th className="pb-2 font-medium text-right">Points</th>
+                <th className="pb-2 font-medium">Status</th>
+                <th className="pb-2 font-medium text-right">Manage</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {challenge.participants.map((person) => (
+                <tr key={person.id} className={person.deactivatedAt ? "bg-slate-50/70" : undefined}>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    <Link
+                      href={`/admin/users/${person.id}`}
+                      className={`font-medium hover:underline ${person.deactivatedAt ? "text-slate-500" : "text-slate-900"}`}
+                    >
+                      {person.name}
+                    </Link>
+                  </td>
+                  <td className="py-2 pr-3 text-slate-500">{person.email}</td>
+                  <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">{person.team ?? "—"}</td>
+                  <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">{formatDate(person.joinedAt)}</td>
+                  <td className="py-2 pr-3 text-right font-semibold text-emerald-700">
+                    {pointsByUser.get(person.id) ?? 0}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {person.deactivatedAt ? (
+                      <span
+                        title={`Deactivated ${formatDate(person.deactivatedAt)}`}
+                        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-amber-50 text-amber-700 ring-amber-600/20"
+                      >
+                        Deactivated
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-600/20">
+                        Active
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 text-right">
+                    <ParticipantStatusButton
+                      challengeId={id}
+                      challengeName={challenge.name}
+                      userId={person.id}
+                      userName={person.name}
+                      isDeactivated={!!person.deactivatedAt}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </Section>
 

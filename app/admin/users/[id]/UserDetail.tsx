@@ -11,8 +11,6 @@ import {
   Star,
   Download,
   Trophy,
-  UserCheck,
-  UserX,
   ChevronDown,
   ChevronUp,
   ShieldCheck,
@@ -23,7 +21,6 @@ import type { UserRole } from "@prisma/client";
 import {
   deleteUserPermanent,
   updateUserRole,
-  updateUserStatus,
   type getAdminUserDetail,
 } from "@/app/actions/admin-users";
 import { ConfirmActionButton } from "@/components/admin/ConfirmActionButton";
@@ -42,8 +39,9 @@ import {
 
 type AdminUserDetail = NonNullable<Awaited<ReturnType<typeof getAdminUserDetail>>>;
 
-// SuperAdmins can set any role and permanently delete; regular admins can only deactivate
-// and promote General Users to Admin (the server actions enforce the same rules)
+// SuperAdmins can set any role and permanently delete; regular admins can only promote
+// General Users to Admin (the server actions enforce the same rules). Deactivation is
+// per challenge and lives on the challenge's Participant Roster.
 export default function UserDetail({ user, isSuperAdmin }: { user: AdminUserDetail; isSuperAdmin: boolean }) {
   const router = useRouter();
   const [expandedParticipation, setExpandedParticipation] = useState(false);
@@ -72,10 +70,6 @@ export default function UserDetail({ user, isSuperAdmin }: { user: AdminUserDeta
         setTimeout(() => setRoleSavedNotice(false), 2000);
       }
     );
-  };
-
-  const handleToggleStatus = () => {
-    runMutation(() => updateUserStatus(user.id, user.status === "ACTIVE" ? "DEACTIVATED" : "ACTIVE"));
   };
 
   const exportParticipationCsv = () => {
@@ -110,7 +104,6 @@ export default function UserDetail({ user, isSuperAdmin }: { user: AdminUserDeta
   // Invitees have no Clerk account yet, so there is no role or sign-in to change until they sign up
   const isInvited = user.status === "INVITED";
   const canEditRole = !isInvited && !user.roleManagedByEnv && (isSuperAdmin || user.role === "GENERAL_USER");
-  const canChangeStatus = !isInvited && (isSuperAdmin || user.role !== "SUPERADMIN");
 
   const visibleParticipation = expandedParticipation ? user.actions : user.actions.slice(0, 5);
 
@@ -167,30 +160,6 @@ export default function UserDetail({ user, isSuperAdmin }: { user: AdminUserDeta
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2">
-            {canChangeStatus && (
-              <button
-                type="button"
-                onClick={handleToggleStatus}
-                disabled={isSaving}
-                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors shadow-xs disabled:opacity-60 ${
-                  user.status === "ACTIVE"
-                    ? "bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"
-                    : "bg-emerald-600 text-white hover:bg-emerald-700"
-                }`}
-              >
-                {user.status === "ACTIVE" ? (
-                  <>
-                    <UserX className="w-4 h-4" />
-                    Deactivate User
-                  </>
-                ) : (
-                  <>
-                    <UserCheck className="w-4 h-4" />
-                    Activate User
-                  </>
-                )}
-              </button>
-            )}
             {isSuperAdmin && isInvited && (
               <ConfirmActionButton
                 label="Revoke Invitation"

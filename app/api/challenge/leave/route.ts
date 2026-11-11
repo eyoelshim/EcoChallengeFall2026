@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
+import { DEACTIVATED_IN_CHALLENGE_MESSAGE } from "@/lib/participation";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 import { NextResponse } from "next/server";
 
@@ -44,6 +45,11 @@ export async function DELETE(req: Request) {
         { error: "You are not a member of this challenge." },
         { status: 404 },
       );
+    }
+
+    // Leaving and rejoining would create a fresh active enrollment, so deactivated participants stay put
+    if (membership.deactivatedAt) {
+      return NextResponse.json({ error: DEACTIVATED_IN_CHALLENGE_MESSAGE }, { status: 403 });
     }
 
     await db.$transaction([
