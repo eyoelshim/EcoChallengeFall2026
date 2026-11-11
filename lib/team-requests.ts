@@ -1,5 +1,6 @@
 import { TeamRequestStatus } from "@prisma/client";
 import { db } from "@/lib/db";
+import { DEACTIVATED_IN_CHALLENGE_MESSAGE } from "@/lib/participation";
 
 type CreateTeamRequestInput = {
   clerkId: string;
@@ -30,7 +31,7 @@ export async function createTeamRequest({
     include: {
       challenges: {
         where: { challengeId },
-        select: { challengeId: true },
+        select: { challengeId: true, deactivatedAt: true },
       },
       teams: {
         include: { team: { select: { challengeId: true } } },
@@ -44,6 +45,10 @@ export async function createTeamRequest({
 
   if (user.challenges.length === 0) {
     throw new Error("You must join the challenge before requesting a team");
+  }
+
+  if (user.challenges[0].deactivatedAt) {
+    throw new Error(DEACTIVATED_IN_CHALLENGE_MESSAGE);
   }
 
   const alreadyOnTeam = user.teams.some(

@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 import { ensureGlobalChallengeExists } from "@/lib/global-challenge";
+import { DEACTIVATED_IN_CHALLENGE_MESSAGE, isDeactivatedInChallenge } from "@/lib/participation";
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
@@ -144,6 +145,10 @@ export async function POST(req: Request) {
       normalizedBodyChallenge ??
       user.challenges[0]?.challengeId ??
       GLOBAL_CHALLENGE_ID;
+
+    if (await isDeactivatedInChallenge(user.id, challengeId)) {
+      return NextResponse.json({ error: DEACTIVATED_IN_CHALLENGE_MESSAGE }, { status: 403 });
+    }
 
     const normalizedNote = note?.trim() || null;
     const normalizedImageUrl = imageUrl || null;

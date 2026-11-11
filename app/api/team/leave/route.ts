@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
+import { DEACTIVATED_IN_CHALLENGE_MESSAGE, isDeactivatedInChallenge } from "@/lib/participation";
 import { NextResponse } from "next/server";
 
 export async function DELETE(req: Request) {
@@ -39,6 +40,11 @@ export async function DELETE(req: Request) {
         { error: "You are not a member of this team." },
         { status: 404 },
       );
+    }
+
+    // Deactivated participants stay on their team so its totals don't change
+    if (membership.team.challengeId && (await isDeactivatedInChallenge(user.id, membership.team.challengeId))) {
+      return NextResponse.json({ error: DEACTIVATED_IN_CHALLENGE_MESSAGE }, { status: 403 });
     }
 
     await db.teamMember.delete({

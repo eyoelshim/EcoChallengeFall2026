@@ -14,6 +14,8 @@ type ConfirmActionButtonProps = {
   confirmLabel: string;
   pendingLabel: string;
   tone: Tone;
+  // Defaults to a trash icon for danger and an archive icon for warning
+  icon?: React.ElementType;
   // A Server Action bound to its record id, e.g. deleteChallenge.bind(null, id)
   action: () => Promise<{ error?: string }>;
   // Where to go after success; omit to stay on the page and refresh it
@@ -46,7 +48,7 @@ export function ConfirmActionButton(props: ConfirmActionButtonProps) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const styles = TONE_STYLES[props.tone];
-  const TriggerIcon = props.tone === "danger" ? Trash2 : Archive;
+  const TriggerIcon = props.icon ?? (props.tone === "danger" ? Trash2 : Archive);
 
   const close = () => {
     if (isPending) return;
