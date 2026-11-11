@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/authz";
+import { requireAdmin, requireSuperAdmin } from "@/lib/authz";
 
-const TEMPLATES_PATH = "/admin/admin/templates";
-const NEW_CHALLENGE_PATH = "/admin/admin/challenges/new";
+const TEMPLATES_PATH = "/admin/templates";
+const NEW_CHALLENGE_PATH = "/admin/challenges/new";
 
 export interface TemplateActionItem {
   catalogId?: string;
@@ -207,10 +207,10 @@ export async function updateAdminTemplate(
   }
 }
 
+// Permanent deletion is SuperAdmin-only (Nov 5 2026 stakeholder decision)
 export async function deleteAdminTemplate(id: string): Promise<{ success: boolean; error?: string }> {
-  await requireAdmin();
-
   try {
+    await requireSuperAdmin();
     await db.challengeTemplate.delete({
       where: { id },
     });

@@ -1,5 +1,7 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { isCurrentUserAdmin } from "@/lib/authz";
+import { UserStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 import { ensureGlobalChallengeExists } from "@/lib/global-challenge";
@@ -43,6 +45,8 @@ export default async function DashboardPage() {
           include: userInclude,
         });
 
+        // Pre-created rows (bulk invites, /join) already hold the department; linking here
+        // attaches the Clerk account and turns the pending invitee into an active participant
         if (existingByEmail) {
           return db.user.update({
             where: { id: existingByEmail.id },
@@ -50,6 +54,7 @@ export default async function DashboardPage() {
               clerkId: user.id,
               email,
               name: user.firstName || "User",
+              ...(existingByEmail.status === UserStatus.INVITED && { status: UserStatus.ACTIVE }),
             },
             include: userInclude,
           });
@@ -92,7 +97,7 @@ export default async function DashboardPage() {
       firstName={user.firstName || "User"}
       teamMemberships={teamMemberships}
       initialStreak={dbUser.streak}
-      isAdmin={user.publicMetadata?.role === "admin"}
+      isAdmin={await isCurrentUserAdmin()}
     />
   );
 }

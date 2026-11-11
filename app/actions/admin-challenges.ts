@@ -6,11 +6,11 @@ import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { ActionCategory, ChallengeStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { isCurrentUserAdmin, requireAdmin } from "@/lib/authz";
+import { isCurrentUserAdmin, requireAdmin, requireSuperAdmin } from "@/lib/authz";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 import { checkStatusAgainstDates, isReopening, statusForDates, toISODate } from "@/lib/challenge-lifecycle";
 
-const CHALLENGES_PATH = "/admin/admin/challenges";
+const CHALLENGES_PATH = "/admin/challenges";
 
 async function requireAdminActor() {
   const { userId } = await auth();
@@ -19,16 +19,26 @@ async function requireAdminActor() {
   return db.user.findUnique({ where: { clerkId: userId } });
 }
 
-function isChallengeStatus(value: string | undefined): value is ChallengeStatus {
-  return !!value && Object.values(ChallengeStatus).includes(value as ChallengeStatus);
+function isChallengeStatus(
+  value: string | undefined,
+): value is ChallengeStatus {
+  return (
+    !!value && Object.values(ChallengeStatus).includes(value as ChallengeStatus)
+  );
 }
 
-export async function getAdminChallenges(filter?: { status?: string; search?: string }) {
+export async function getAdminChallenges(filter?: {
+  status?: string;
+  search?: string;
+}) {
   await requireAdmin();
 
   // The global challenge is the default app experience, not an admin-managed challenge
-  const filters: Prisma.ChallengeWhereInput[] = [{ id: { not: GLOBAL_CHALLENGE_ID } }];
-  if (isChallengeStatus(filter?.status)) filters.push({ status: filter.status });
+  const filters: Prisma.ChallengeWhereInput[] = [
+    { id: { not: GLOBAL_CHALLENGE_ID } },
+  ];
+  if (isChallengeStatus(filter?.status))
+    filters.push({ status: filter.status });
   const search = filter?.search?.trim();
   if (search) {
     filters.push({
@@ -83,6 +93,8 @@ export async function getAdminChallengeById(id: string) {
       actions: {
         take: 20,
         orderBy: { date: "desc" },
+        // imageUrl holds inline base64 photos (MBs per row) and is never shown here
+        omit: { imageUrl: true },
         include: { user: { select: { id: true, name: true } } },
       },
     },
@@ -128,12 +140,14 @@ export async function getAdminChallengeById(id: string) {
       name: team.name,
       memberCount: team.members.length,
     })),
-    actions: challenge.challengeActions.map(({ actionCatalog }) => ({
-      id: actionCatalog.id,
-      title: actionCatalog.title,
-      description: actionCatalog.description,
-      category: actionCatalog.category,
-      points: actionCatalog.points,
+    actions: challenge.challengeActions.map((challengeAction) => ({
+      id: challengeAction.actionCatalog.id,
+      title:
+        challengeAction.titleOverride || challengeAction.actionCatalog.title,
+      description: challengeAction.actionCatalog.description,
+      category: challengeAction.actionCatalog.category,
+      points:
+        challengeAction.pointsOverride ?? challengeAction.actionCatalog.points,
     })),
     leaderboard: pointSums.map((row, index) => ({
       rank: index + 1,
@@ -185,7 +199,10 @@ export async function getChallengeFormOptions() {
   await requireAdmin();
 
   const [departments, challenges] = await Promise.all([
-    db.department.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    db.department.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
     db.challenge.findMany({
       where: { id: { not: GLOBAL_CHALLENGE_ID } },
       include: { challengeActions: { include: { actionCatalog: true } } },
@@ -203,12 +220,15 @@ export async function getChallengeFormOptions() {
       description: challenge.description,
       departmentId: challenge.departmentId,
       themeColor: challenge.themeColor,
-      actions: challenge.challengeActions.map(({ actionCatalog }) => ({
-        catalogId: actionCatalog.id,
-        title: actionCatalog.title,
-        description: actionCatalog.description ?? "",
-        category: actionCatalog.category as string,
-        points: actionCatalog.points,
+      actions: challenge.challengeActions.map((challengeAction) => ({
+        catalogId: challengeAction.actionCatalog.id,
+        title:
+          challengeAction.titleOverride || challengeAction.actionCatalog.title,
+        description: challengeAction.actionCatalog.description ?? "",
+        category: challengeAction.actionCatalog.category as string,
+        points:
+          challengeAction.pointsOverride ??
+          challengeAction.actionCatalog.points,
       })),
     })),
   };
@@ -305,7 +325,11 @@ function firstFieldErrors(error: z.ZodError): ChallengeFormResult["fieldErrors"]
 async function generateChallengeCode() {
   let code = "";
   do {
-    code = Math.random().toString(36).substring(2, 8).toUpperCase().padEnd(6, "0");
+    code = Math.random()
+      .toString(36)
+      .substring(2, 8)
+      .toUpperCase()
+      .padEnd(6, "0");
   } while (await db.challenge.findUnique({ where: { code } }));
   return code;
 }
@@ -340,8 +364,12 @@ export async function createAdminChallenge(formData: FormData): Promise<Challeng
       const catalogIds = new Set<string>();
       for (const action of data.actions) {
         const existing = action.catalogId
-          ? await tx.actionCatalog.findUnique({ where: { id: action.catalogId } })
-          : await tx.actionCatalog.findFirst({ where: { title: action.title, category: action.category } });
+          ? await tx.actionCatalog.findUnique({
+              where: { id: action.catalogId },
+            })
+          : await tx.actionCatalog.findFirst({
+              where: { title: action.title, category: action.category },
+            });
         const catalog =
           existing ??
           (await tx.actionCatalog.create({
@@ -356,7 +384,10 @@ export async function createAdminChallenge(formData: FormData): Promise<Challeng
       }
       if (catalogIds.size > 0) {
         await tx.challengeAction.createMany({
-          data: [...catalogIds].map((actionCatalogId) => ({ challengeId: created.id, actionCatalogId })),
+          data: [...catalogIds].map((actionCatalogId) => ({
+            challengeId: created.id,
+            actionCatalogId,
+          })),
         });
       }
 
@@ -374,7 +405,9 @@ export async function createAdminChallenge(formData: FormData): Promise<Challeng
   } catch (err) {
     console.error(err);
     // Next.js hides thrown error messages from the client in production, so return them instead
-    return { error: err instanceof Error ? err.message : "Something went wrong" };
+    return {
+      error: err instanceof Error ? err.message : "Something went wrong",
+    };
   }
 
   revalidatePath(CHALLENGES_PATH);
@@ -382,13 +415,17 @@ export async function createAdminChallenge(formData: FormData): Promise<Challeng
   redirect(CHALLENGES_PATH);
 }
 
-export async function updateChallengeStatus(id: string, status: ChallengeStatus): Promise<{ error?: string }> {
+export async function updateChallengeStatus(
+  id: string,
+  status: ChallengeStatus,
+): Promise<{ error?: string }> {
   try {
     const actor = await requireAdminActor();
     if (!isChallengeStatus(status)) throw new Error("Invalid status");
 
     const challenge = await db.challenge.findUnique({ where: { id } });
-    if (!challenge || challenge.id === GLOBAL_CHALLENGE_ID) throw new Error("Challenge not found");
+    if (!challenge || challenge.id === GLOBAL_CHALLENGE_ID)
+      throw new Error("Challenge not found");
     if (challenge.status === status) return {};
 
     await db.$transaction([
@@ -403,7 +440,9 @@ export async function updateChallengeStatus(id: string, status: ChallengeStatus)
     ]);
   } catch (err) {
     console.error(err);
-    return { error: err instanceof Error ? err.message : "Something went wrong" };
+    return {
+      error: err instanceof Error ? err.message : "Something went wrong",
+    };
   }
 
   revalidatePath(CHALLENGES_PATH);
@@ -470,4 +509,48 @@ export async function updateAdminChallenge(id: string, formData: FormData): Prom
   revalidatePath("/dashboard");
   revalidatePath("/log-action", "layout");
   redirect(`${CHALLENGES_PATH}/${id}`);
+}
+
+/**
+ * Permanently deletes a challenge along with its teams, enrollments, team requests,
+ * configured actions, and every action logged inside it.
+ *
+ * @param id Challenge id to delete.
+ * @returns An empty object on success, or `{ error }` with a client-safe message.
+ *
+ * Intent: Hard deletion is SuperAdmin-only; regular admins archive instead via
+ * updateChallengeStatus. Points earned in this challenge are removed with it, so
+ * participants' lifetime totals drop. Most relations have no cascade in the schema,
+ * so dependents are cleared explicitly in one transaction.
+ */
+export async function deleteChallenge(id: string): Promise<{ error?: string }> {
+  try {
+    await requireSuperAdmin();
+    const actor = await requireAdminActor();
+
+    const challenge = await db.challenge.findUnique({ where: { id } });
+    if (!challenge || challenge.id === GLOBAL_CHALLENGE_ID) throw new Error("Challenge not found");
+
+    await db.$transaction([
+      db.teamMember.deleteMany({ where: { team: { challengeId: id } } }),
+      db.team.deleteMany({ where: { challengeId: id } }),
+      db.teamRequest.deleteMany({ where: { challengeId: id } }),
+      db.userChallenge.deleteMany({ where: { challengeId: id } }),
+      db.action.deleteMany({ where: { challengeId: id } }),
+      db.challenge.delete({ where: { id } }),
+      db.activityLog.create({
+        data: {
+          userId: actor?.id,
+          action: "Challenge Deleted",
+          details: `${challenge.name} (${challenge.code}) permanently deleted by ${actor?.name ?? "SuperAdmin"}`,
+        },
+      }),
+    ]);
+  } catch (err) {
+    console.error(err);
+    return { error: err instanceof Error ? err.message : "Something went wrong" };
+  }
+
+  revalidatePath(CHALLENGES_PATH);
+  return {};
 }

@@ -9,7 +9,8 @@ datasource db {
 
 model User {
   id               String          @id @default(cuid())
-  clerkId          String          @unique
+  // Null until an invited user signs up; the dashboard links the Clerk account by email on first sign-in
+  clerkId          String?         @unique
   name             String
   email            String          @unique
   // Legacy free-text department from onboarding; kept on the original column so no data is lost
@@ -135,6 +136,7 @@ model ActionCatalog {
   description      String?
   category         ActionCategory
   points           Int               @default(10)
+  isGlobal         Boolean           @default(true)
   challengeActions ChallengeAction[]
   createdAt        DateTime          @default(now())
 }
@@ -143,6 +145,8 @@ model ChallengeAction {
   id              String        @id @default(cuid())
   challengeId     String
   actionCatalogId String
+  pointsOverride  Int?
+  titleOverride   String?
   challenge       Challenge     @relation(fields: [challengeId], references: [id], onDelete: Cascade)
   actionCatalog   ActionCatalog @relation(fields: [actionCatalogId], references: [id], onDelete: Cascade)
 
@@ -187,6 +191,8 @@ enum UserRole {
 enum UserStatus {
   ACTIVE
   DEACTIVATED
+  // Invited by email or via /join but not signed up yet; excluded from active participant counts
+  INVITED
 }
 
 enum ChallengeStatus {

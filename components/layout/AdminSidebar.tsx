@@ -21,13 +21,13 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/admin/admin", icon: LayoutDashboard },
-  { label: "Challenges", href: "/admin/admin/challenges", icon: Calendar },
-  { label: "Action Catalog", href: "/admin/admin/actions", icon: ListChecks },
-  { label: "Templates", href: "/admin/admin/templates", icon: LayoutTemplate },
-  { label: "Groups", href: "/admin/admin/groups", icon: Building2 },
-  { label: "Users", href: "/admin/admin/users", icon: Users },
-  { label: "Reports", href: "/admin/admin/reports", icon: BarChart3 },
+  { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
+  { label: "Challenges", href: "/admin/challenges", icon: Calendar },
+  { label: "Action Catalog", href: "/admin/actions", icon: ListChecks },
+  { label: "Templates", href: "/admin/templates", icon: LayoutTemplate },
+  { label: "Groups", href: "/admin/groups", icon: Building2 },
+  { label: "Users", href: "/admin/users", icon: Users },
+  { label: "Reports", href: "/admin/reports", icon: BarChart3 },
 ];
 
 export default function AdminSidebar() {
@@ -50,7 +50,7 @@ export default function AdminSidebar() {
         {navItems.map((item) => {
           const isActive =
             pathname === item.href ||
-            (item.href !== "/admin/admin" && pathname.startsWith(item.href));
+            (item.href !== "/admin" && pathname.startsWith(item.href));
           const Icon = item.icon;
           return (
             <Link
