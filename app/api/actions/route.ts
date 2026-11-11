@@ -1,23 +1,42 @@
+/**
+ * @file app/api/actions/route.ts
+ * @description API endpoint for fetching and logging sustainable actions.
+ * Optimized with explicit column projection to avoid retrieving large
+ * base64 payloads on feed and summary list queries.
+ */
+
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 import { ensureGlobalChallengeExists } from "@/lib/global-challenge";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { ActionCategory, Prisma } from "@prisma/client";
 
 const DUPLICATE_SUBMISSION_WINDOW_MS = 10_000;
 
-export async function GET(req: Request) {
+/**
+ * Handles GET requests to retrieve logged actions.
+ * Supports filters for popular actions, global community feed, recent actions,
+ * and scoped personal activity.
+ *
+ * @param req - Incoming HTTP Request.
+ * @returns JSON response containing action lists.
+ */
+export async function GET(req: Request): Promise<NextResponse> {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const { searchParams } = new URL(req.url);
     const filter = searchParams.get("filter");
     const challengeId = searchParams.get("challengeId") ?? undefined;
     const category = searchParams.get("category") ?? undefined;
     const challengeFilter = challengeId ? { challengeId } : {};
-    const categoryFilter = category ? { category: category as "TRANSPORT" | "WATER" | "ENERGY" | "RECYCLING" | "FOOD" } : {};
+    const categoryFilter = category
+      ? { category: category as ActionCategory }
+      : {};
 
     if (filter === "popular") {
       const popular = await db.action.groupBy({
@@ -31,21 +50,34 @@ export async function GET(req: Request) {
           actionType: p.actionType,
           category: p.category,
           count: p._count.actionType,
-        }))
+        })),
       );
     }
 
     if (filter === "global") {
       const showAll = searchParams.get("all") === "true";
+      const limitParam = searchParams.get("limit");
+      const limit = limitParam
+        ? Math.min(Math.max(1, parseInt(limitParam, 10) || 20), 50)
+        : showAll
+          ? 50
+          : 10;
+
       const recent = await db.action.findMany({
         where: { ...challengeFilter, ...categoryFilter },
         orderBy: { createdAt: "desc" },
-        ...(showAll ? {} : { take: 10 }),
-        include: {
+        take: limit,
+        select: {
+          id: true,
+          actionType: true,
+          points: true,
+          createdAt: true,
+          challengeId: true,
           user: { select: { name: true } },
           challenge: { select: { name: true } },
         },
       });
+
       return NextResponse.json(
         recent.map((a) => ({
           id: a.id,
@@ -55,7 +87,7 @@ export async function GET(req: Request) {
           userName: a.user.name,
           challengeId: a.challengeId,
           challengeName: a.challenge?.name ?? null,
-        }))
+        })),
       );
     }
 
@@ -77,33 +109,61 @@ export async function GET(req: Request) {
       return NextResponse.json(unique);
     }
 
-    const user = await db.user.findUnique({ where: { clerkId: userId } });
-    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const user = await db.user.findUnique({
+      where: { clerkId: userId },
+      select: { id: true },
+    });
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
 
     const actions = await db.action.findMany({
       where: { userId: user.id, ...challengeFilter, ...categoryFilter },
       orderBy: { createdAt: "desc" },
-      include: {
+      select: {
+        id: true,
+        actionType: true,
+        category: true,
+        points: true,
+        createdAt: true,
+        challengeId: true,
         challenge: { select: { name: true } },
       },
     });
 
     return NextResponse.json(
       actions.map((action) => ({
-        ...action,
+        id: action.id,
+        actionType: action.actionType,
+        category: action.category,
+        points: action.points,
+        createdAt: action.createdAt,
+        challengeId: action.challengeId,
         challengeName: action.challenge?.name ?? null,
-      }))
+      })),
     );
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Failed to load actions" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to load actions" },
+      { status: 500 },
+    );
   }
 }
 
-export async function POST(req: Request) {
+/**
+ * Handles POST requests to log a newly completed sustainable action.
+ * Calculates bonus points, checks for duplicates, and updates user streak.
+ *
+ * @param req - Incoming HTTP Request containing action parameters.
+ * @returns JSON response containing created action and updated streak.
+ */
+export async function POST(req: Request): Promise<NextResponse> {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await req.json();
     const {
@@ -118,18 +178,19 @@ export async function POST(req: Request) {
     if (!category || !actionType) {
       return NextResponse.json(
         { error: "category and actionType are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const user = await db.user.findUnique({
       where: { clerkId: userId },
       include: {
-        // Grab the user's most recent challenge as a fallback
         challenges: { orderBy: { createdAt: "desc" }, take: 1 },
       },
     });
-    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
 
     // Use the provided challengeId, or auto-assign from user's latest challenge,
     // always falling back to global so no action is ever orphaned.
@@ -152,7 +213,9 @@ export async function POST(req: Request) {
     const noteBonus = normalizedNote ? 10 : 0;
     const imageBonus = normalizedImageUrl ? 15 : 0;
     const totalPoints = (points ?? 0) + noteBonus + imageBonus;
-    const duplicateCutoff = new Date(Date.now() - DUPLICATE_SUBMISSION_WINDOW_MS);
+    const duplicateCutoff = new Date(
+      Date.now() - DUPLICATE_SUBMISSION_WINDOW_MS,
+    );
 
     const action = await db.$transaction(
       async (tx) => {
@@ -217,7 +280,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ...action, streak: newStreak });
   } catch (error) {
-    if (error instanceof Error && error.message === "DUPLICATE_ACTION_SUBMISSION") {
+    if (
+      error instanceof Error &&
+      error.message === "DUPLICATE_ACTION_SUBMISSION"
+    ) {
       return NextResponse.json(
         { error: "This action was already logged a moment ago." },
         { status: 409 },
@@ -235,6 +301,9 @@ export async function POST(req: Request) {
     }
 
     console.error(error);
-    return NextResponse.json({ error: "Failed to create action" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create action" },
+      { status: 500 },
+    );
   }
 }

@@ -231,12 +231,7 @@ export default function DashboardClient({
 
   // Category filtering for activity views
   type CategoryType =
-    | "ALL"
-    | "TRANSPORT"
-    | "WATER"
-    | "ENERGY"
-    | "RECYCLING"
-    | "FOOD";
+    "ALL" | "TRANSPORT" | "WATER" | "ENERGY" | "RECYCLING" | "FOOD";
 
   // Derive active category from challenge selection
   const activeCategory: CategoryType = activeChallengeId.startsWith("CATEGORY_")
@@ -424,20 +419,6 @@ export default function DashboardClient({
     setLeaderboard(Array.isArray(data) ? data : []);
   }
 
-  async function fetchActions(cId = activeChallengeId) {
-    const params = new URLSearchParams();
-    if (cId && cId !== GLOBAL_CHALLENGE_ID && !cId.startsWith("CATEGORY_")) {
-      params.set("challengeId", cId);
-    }
-    if (activeCategory !== "ALL") {
-      params.set("category", activeCategory);
-    }
-    const query = params.toString();
-    const res = await fetch(`/api/actions${query ? `?${query}` : ""}`);
-    const data = await res.json();
-    if (Array.isArray(data)) setActions(data);
-  }
-
   const fetchMyActivity = useCallback(
     async (category = activeCategory) => {
       const params = new URLSearchParams();
@@ -453,7 +434,10 @@ export default function DashboardClient({
       const query = params.toString();
       const res = await fetch(`/api/actions${query ? `?${query}` : ""}`);
       const data = await res.json();
-      if (Array.isArray(data)) setMyActivity(data);
+      if (Array.isArray(data)) {
+        setMyActivity(data);
+        setActions(data);
+      }
     },
     [activeCategory, activeChallengeId],
   );
@@ -462,7 +446,7 @@ export default function DashboardClient({
     async (category = activeCategory) => {
       const params = new URLSearchParams();
       params.set("filter", "global");
-      params.set("all", "true");
+      params.set("limit", "20");
       if (
         activeChallengeId !== GLOBAL_CHALLENGE_ID &&
         !activeChallengeId.startsWith("CATEGORY_")
@@ -640,7 +624,6 @@ export default function DashboardClient({
     }
     loadLeaderboard(effectiveChallengeId);
     fetchIndividualLeaderboard(effectiveChallengeId);
-    fetchActions(effectiveChallengeId);
     fetchMyActivity();
     fetchGlobalFeed();
     fetchStats("week", effectiveChallengeId);
@@ -650,7 +633,6 @@ export default function DashboardClient({
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        fetchActions(effectiveChallengeId);
         fetchMyActivity();
         fetchGlobalFeed();
         loadLeaderboard(effectiveChallengeId);
@@ -773,9 +755,7 @@ export default function DashboardClient({
                 {c.name}
               </option>
             ))}
-            <option value="CATEGORY_TRANSPORT">
-              Transportation Challenge
-            </option>
+            <option value="CATEGORY_TRANSPORT">Transportation Challenge</option>
             <option value="CATEGORY_WATER">Water Challenge</option>
             <option value="CATEGORY_ENERGY">Energy Challenge</option>
             <option value="CATEGORY_RECYCLING">Recycling Challenge</option>
@@ -805,9 +785,7 @@ export default function DashboardClient({
             </Link>
           )}
           <div className="hidden lg:block h-8 w-[1px] bg-[#ececea] mx-1"></div>
-          <UserButton
-            appearance={{ elements: { avatarBox: "h-9 w-9" } }}
-          />
+          <UserButton appearance={{ elements: { avatarBox: "h-9 w-9" } }} />
         </div>
       </header>
 
@@ -834,9 +812,7 @@ export default function DashboardClient({
               </p>
             </div>
           </Link>
-          <UserButton
-            appearance={{ elements: { avatarBox: "h-9 w-9" } }}
-          />
+          <UserButton appearance={{ elements: { avatarBox: "h-9 w-9" } }} />
         </div>
 
         <div className="grid grid-cols-[1fr_auto] items-center gap-2">
@@ -851,9 +827,7 @@ export default function DashboardClient({
                 {c.name}
               </option>
             ))}
-            <option value="CATEGORY_TRANSPORT">
-              Transportation Challenge
-            </option>
+            <option value="CATEGORY_TRANSPORT">Transportation Challenge</option>
             <option value="CATEGORY_WATER">Water Challenge</option>
             <option value="CATEGORY_ENERGY">Energy Challenge</option>
             <option value="CATEGORY_RECYCLING">Recycling Challenge</option>
