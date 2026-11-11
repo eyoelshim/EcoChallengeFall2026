@@ -3,9 +3,9 @@
 import React, { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, Download, Eye, UserCheck, UserX, Building2 } from "lucide-react";
+import { Search, Download, Eye, Building2 } from "lucide-react";
 import type { UserRole, UserStatus } from "@prisma/client";
-import { updateUserStatus, type getAdminUsers } from "@/app/actions/admin-users";
+import type { getAdminUsers } from "@/app/actions/admin-users";
 import { downloadCsv } from "@/lib/csv";
 import {
   ROLE_OPTIONS,
@@ -19,7 +19,6 @@ import {
 } from "./user-display";
 
 type AdminUsersData = Awaited<ReturnType<typeof getAdminUsers>>;
-type AdminUserRow = AdminUsersData["users"][number];
 
 type Filters = {
   role?: string;
@@ -34,11 +33,6 @@ export default function UsersTable({ data, filters }: { data: AdminUsersData; fi
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(filters.search ?? "");
-
-  // Confirmation modal state
-  const [statusModalUser, setStatusModalUser] = useState<AdminUserRow | null>(null);
-  const [statusError, setStatusError] = useState<string | null>(null);
-  const [isSaving, startSaving] = useTransition();
 
   const { users, departments, roleCounts, statusCounts, total } = data;
 
@@ -73,21 +67,6 @@ export default function UsersTable({ data, filters }: { data: AdminUsersData; fi
       JoinedAt: formatDate(u.joinedAt),
     }));
     downloadCsv("greenstep_users.csv", exportRows);
-  };
-
-  const confirmToggleStatus = () => {
-    if (!statusModalUser) return;
-    const nextStatus: UserStatus = statusModalUser.status === "ACTIVE" ? "DEACTIVATED" : "ACTIVE";
-    setStatusError(null);
-    startSaving(async () => {
-      const result = await updateUserStatus(statusModalUser.id, nextStatus);
-      if (result.error) {
-        setStatusError(result.error);
-        return;
-      }
-      setStatusModalUser(null);
-      router.refresh();
-    });
   };
 
   return (
@@ -285,25 +264,6 @@ export default function UsersTable({ data, filters }: { data: AdminUsersData; fi
                     >
                       <Eye className="w-4 h-4" />
                     </Link>
-
-                    {/* Activate / Deactivate Toggle; invitees have no account to toggle yet */}
-                    {user.status !== "INVITED" && (
-                      <button
-                        type="button"
-                        title={user.status === "ACTIVE" ? "Deactivate User" : "Activate User"}
-                        onClick={() => {
-                          setStatusError(null);
-                          setStatusModalUser(user);
-                        }}
-                        className={`p-1.5 rounded-lg transition-colors ${
-                          user.status === "ACTIVE"
-                            ? "text-slate-400 hover:text-amber-700 hover:bg-amber-50"
-                            : "text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50"
-                        }`}
-                      >
-                        {user.status === "ACTIVE" ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                      </button>
-                    )}
                   </div>
                 </td>
               </tr>
@@ -327,79 +287,6 @@ export default function UsersTable({ data, filters }: { data: AdminUsersData; fi
         <p>Live data · Neon PostgreSQL</p>
       </div>
 
-      {/* ── Status Confirmation Modal ── */}
-      {statusModalUser && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs px-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                  statusModalUser.status === "ACTIVE"
-                    ? "bg-amber-100 text-amber-600"
-                    : "bg-emerald-100 text-emerald-600"
-                }`}
-              >
-                {statusModalUser.status === "ACTIVE" ? (
-                  <UserX className="w-5 h-5" />
-                ) : (
-                  <UserCheck className="w-5 h-5" />
-                )}
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">
-                  {statusModalUser.status === "ACTIVE" ? "Deactivate User" : "Activate User"}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {statusModalUser.status === "ACTIVE"
-                    ? "Mark this account as deactivated"
-                    : "Restore this account to active"}
-                </p>
-              </div>
-            </div>
-
-            <p className="text-sm text-slate-600 leading-relaxed">
-              Are you sure you want to{" "}
-              <strong className="text-slate-900">
-                {statusModalUser.status === "ACTIVE" ? "deactivate" : "activate"}
-              </strong>{" "}
-              <span className="font-medium text-slate-900">{statusModalUser.name}</span> ({statusModalUser.email})?
-            </p>
-
-            {statusError && (
-              <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
-                {statusError}
-              </p>
-            )}
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setStatusModalUser(null)}
-                disabled={isSaving}
-                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmToggleStatus}
-                disabled={isSaving}
-                className={`px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors shadow-sm disabled:opacity-60 ${
-                  statusModalUser.status === "ACTIVE"
-                    ? "bg-amber-600 hover:bg-amber-700"
-                    : "bg-emerald-600 hover:bg-emerald-700"
-                }`}
-              >
-                {isSaving ? "Saving..." : statusModalUser.status === "ACTIVE" ? "Deactivate" : "Activate"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

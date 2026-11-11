@@ -8,6 +8,7 @@ import { ActionCategory, ChallengeStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { isCurrentUserAdmin, requireAdmin, requireSuperAdmin } from "@/lib/authz";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
+import { checkStatusAgainstDates, isReopening, statusForDates, toISODate } from "@/lib/challenge-lifecycle";
 
 const CHALLENGES_PATH = "/admin/challenges";
 
@@ -118,6 +119,7 @@ export async function getAdminChallengeById(id: string) {
     email: uc.user.email,
     team: teamByUser.get(uc.user.id) ?? null,
     joinedAt: uc.createdAt,
+    deactivatedAt: uc.deactivatedAt,
   }));
   const nameByUser = new Map(participants.map((p) => [p.id, p.name]));
 
@@ -164,6 +166,33 @@ export async function getAdminChallengeById(id: string) {
       date: action.date,
     })),
   };
+}
+
+// Just the editable fields, with dates as YYYY-MM-DD so they drop straight into <input type="date">
+export async function getAdminChallengeForEdit(id: string) {
+  await requireAdmin();
+  if (id === GLOBAL_CHALLENGE_ID) return null;
+
+  const challenge = await db.challenge.findUnique({ where: { id } });
+  if (!challenge) return null;
+
+  return {
+    id: challenge.id,
+    name: challenge.name,
+    code: challenge.code,
+    description: challenge.description ?? "",
+    category: challenge.category ?? "",
+    departmentId: challenge.departmentId ?? "",
+    startDate: toISODate(challenge.startDate),
+    endDate: toISODate(challenge.endDate),
+    themeColor: challenge.themeColor ?? "#10B981",
+    status: challenge.status,
+  };
+}
+
+export async function getDepartmentOptions() {
+  await requireAdmin();
+  return db.department.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
 }
 
 // Departments for the form's dropdown and live challenges for "Clone Past Challenge"
@@ -228,21 +257,27 @@ const stagedActionSchema = z.object({
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
-const createChallengeSchema = z
-  .object({
-    name: z.string().trim().min(1, "Challenge name is required."),
-    description: z
-      .string()
-      .trim()
-      .min(10, "Add a short description (at least 10 characters)."),
-    category: z.string().trim().min(1, "Pick a category."),
-    departmentId: z
-      .string()
-      .optional()
-      .transform((value) => value || undefined),
-    startDate: z.string().regex(datePattern, "Start date is required."),
-    endDate: z.string().regex(datePattern, "End date is required."),
-    themeColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Pick a valid color."),
+// Fields shared by the create and edit forms
+const challengeFieldsSchema = z.object({
+  name: z.string().trim().min(1, "Challenge name is required."),
+  description: z.string().trim().min(10, "Add a short description (at least 10 characters)."),
+  category: z.string().trim().min(1, "Pick a category."),
+  // Empty means "All departments". Use null rather than undefined so an update clears it instead of leaving it unchanged.
+  departmentId: z
+    .string()
+    .optional()
+    .transform((value) => value || null),
+  startDate: z.string().regex(datePattern, "Start date is required."),
+  endDate: z.string().regex(datePattern, "End date is required."),
+  themeColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Pick a valid color."),
+});
+
+// Issue #57: startDate must be strictly before endDate
+const endAfterStart = (data: { startDate: string; endDate: string }) => data.endDate > data.startDate;
+const endNotAfterStartIssue = { path: ["endDate"], message: "End date must be after the start date." };
+
+const createChallengeSchema = challengeFieldsSchema
+  .extend({
     actions: z
       .string()
       .optional()
@@ -256,12 +291,13 @@ const createChallengeSchema = z
       })
       .pipe(z.array(stagedActionSchema)),
   })
-  .refine((data) => data.endDate >= data.startDate, {
-    path: ["endDate"],
-    message: "End date must be on or after the start date.",
-  });
+  .refine(endAfterStart, endNotAfterStartIssue);
 
-export type CreateChallengeField =
+const updateChallengeSchema = challengeFieldsSchema
+  .extend({ status: z.enum(ChallengeStatus, "Pick a status.") })
+  .refine(endAfterStart, endNotAfterStartIssue);
+
+export type ChallengeFormField =
   | "name"
   | "description"
   | "category"
@@ -269,12 +305,23 @@ export type CreateChallengeField =
   | "startDate"
   | "endDate"
   | "themeColor"
-  | "actions";
+  | "actions"
+  | "status";
 
-export type CreateChallengeResult = {
+export type ChallengeFormResult = {
   error?: string;
-  fieldErrors?: Partial<Record<CreateChallengeField, string>>;
+  fieldErrors?: Partial<Record<ChallengeFormField, string>>;
 };
+
+// First validation message per field, for showing under each input
+function firstFieldErrors(error: z.ZodError): ChallengeFormResult["fieldErrors"] {
+  const errors: Record<string, string> = {};
+  for (const issue of error.issues) {
+    const field = String(issue.path[0] ?? "");
+    if (field && !(field in errors)) errors[field] = issue.message;
+  }
+  return errors;
+}
 
 async function generateChallengeCode() {
   let code = "";
@@ -288,34 +335,13 @@ async function generateChallengeCode() {
   return code;
 }
 
-function statusForDates(startDate: string, endDate: string): ChallengeStatus {
-  const today = new Date().toISOString().slice(0, 10);
-  if (endDate < today) return ChallengeStatus.COMPLETED;
-  if (startDate <= today) return ChallengeStatus.ACTIVE;
-  return ChallengeStatus.UPCOMING;
-}
-
-export async function createAdminChallenge(
-  formData: FormData,
-): Promise<CreateChallengeResult> {
+export async function createAdminChallenge(formData: FormData): Promise<ChallengeFormResult> {
   let challengeId: string;
   try {
     const actor = await requireAdminActor();
 
-    const parsed = createChallengeSchema.safeParse(
-      Object.fromEntries(formData),
-    );
-    if (!parsed.success) {
-      const { fieldErrors } = z.flattenError(parsed.error);
-      return {
-        fieldErrors: Object.fromEntries(
-          Object.entries(fieldErrors).map(([field, messages]) => [
-            field,
-            messages?.[0],
-          ]),
-        ),
-      };
-    }
+    const parsed = createChallengeSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return { fieldErrors: firstFieldErrors(parsed.error) };
     const data = parsed.data;
     const code = await generateChallengeCode();
 
@@ -425,6 +451,67 @@ export async function updateChallengeStatus(
   return {};
 }
 
+// Edits a challenge's details and status. Also handles reopening an archived/completed challenge
+// with new dates, e.g. rerunning Earth Month each year (stakeholder decision, Nov 5 2026).
+export async function updateAdminChallenge(id: string, formData: FormData): Promise<ChallengeFormResult> {
+  try {
+    const actor = await requireAdminActor();
+    const challenge = await db.challenge.findUnique({ where: { id } });
+    if (!challenge || challenge.id === GLOBAL_CHALLENGE_ID) throw new Error("Challenge not found");
+
+    const parsed = updateChallengeSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return { fieldErrors: firstFieldErrors(parsed.error) };
+    const data = parsed.data;
+
+    // Statuses aren't updated automatically as dates pass, so many challenges have a stale status.
+    // Only check status against dates when the admin changes one of them, so unrelated edits still save.
+    const statusChanged = data.status !== challenge.status;
+    const datesChanged =
+      data.startDate !== toISODate(challenge.startDate) || data.endDate !== toISODate(challenge.endDate);
+    if (statusChanged || datesChanged) {
+      const problem = checkStatusAgainstDates(challenge.status, data.status, data.startDate, data.endDate);
+      if (problem) return { fieldErrors: { [problem.field]: problem.message } };
+    }
+
+    const reopened = isReopening(challenge.status, data.status);
+    const statusNote = statusChanged ? `, ${challenge.status} → ${data.status}` : "";
+
+    await db.$transaction([
+      db.challenge.update({
+        where: { id },
+        data: {
+          name: data.name,
+          description: data.description,
+          category: data.category,
+          departmentId: data.departmentId,
+          startDate: new Date(data.startDate),
+          endDate: new Date(data.endDate),
+          themeColor: data.themeColor,
+          status: data.status,
+        },
+      }),
+      db.activityLog.create({
+        data: {
+          userId: actor?.id,
+          action: reopened ? "Challenge Reopened" : "Challenge Updated",
+          details: `${data.name} (${challenge.code})${statusNote}, ${data.startDate} to ${data.endDate} by ${actor?.name ?? "Admin"}`,
+        },
+      }),
+    ]);
+  } catch (err) {
+    console.error(err);
+    return { error: err instanceof Error ? err.message : "Something went wrong" };
+  }
+
+  revalidatePath(CHALLENGES_PATH);
+  revalidatePath(`${CHALLENGES_PATH}/${id}`);
+  revalidatePath(`${CHALLENGES_PATH}/${id}/edit`);
+  // Participant pages show the challenge name, dates, and color
+  revalidatePath("/dashboard");
+  revalidatePath("/log-action", "layout");
+  redirect(`${CHALLENGES_PATH}/${id}`);
+}
+
 /**
  * Permanently deletes a challenge along with its teams, enrollments, team requests,
  * configured actions, and every action logged inside it.
@@ -466,5 +553,54 @@ export async function deleteChallenge(id: string): Promise<{ error?: string }> {
   }
 
   revalidatePath(CHALLENGES_PATH);
+  return {};
+}
+
+/**
+ * Deactivates or reactivates one participant within one challenge.
+ *
+ * @param challengeId Challenge the participant is enrolled in.
+ * @param userId Database id of the participant.
+ * @param active True to reactivate, false to deactivate.
+ * @returns An empty object on success, or `{ error }` with a client-safe message.
+ *
+ * Intent: Per-challenge deactivation (Nov 5 2026 decision, clarified): the participant can
+ * still sign in and keeps their points, team, and other challenges, but the participant APIs
+ * reject new actions and team changes here. Reversible, so any admin may do it.
+ */
+export async function setChallengeParticipantActive(
+  challengeId: string,
+  userId: string,
+  active: boolean
+): Promise<{ error?: string }> {
+  try {
+    const actor = await requireAdminActor();
+
+    const enrollment = await db.userChallenge.findUnique({
+      where: { userId_challengeId: { userId, challengeId } },
+      include: { user: { select: { name: true } }, challenge: { select: { name: true } } },
+    });
+    if (!enrollment || challengeId === GLOBAL_CHALLENGE_ID) throw new Error("Participant not found in this challenge");
+    if (!!enrollment.deactivatedAt === !active) return {};
+
+    await db.$transaction([
+      db.userChallenge.update({
+        where: { id: enrollment.id },
+        data: { deactivatedAt: active ? null : new Date() },
+      }),
+      db.activityLog.create({
+        data: {
+          userId,
+          action: active ? "Challenge Participant Reactivated" : "Challenge Participant Deactivated",
+          details: `${enrollment.user.name} in ${enrollment.challenge.name} by ${actor?.name ?? "Admin"}`,
+        },
+      }),
+    ]);
+  } catch (err) {
+    console.error(err);
+    return { error: err instanceof Error ? err.message : "Something went wrong" };
+  }
+
+  revalidatePath(`${CHALLENGES_PATH}/${challengeId}`);
   return {};
 }

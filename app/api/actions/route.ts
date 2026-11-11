@@ -9,6 +9,11 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 import { ensureGlobalChallengeExists } from "@/lib/global-challenge";
+import {
+  DEACTIVATED_IN_CHALLENGE_MESSAGE,
+  isDeactivatedInChallenge,
+} from "@/lib/participation";
+import { loggingBlockedReason } from "@/lib/challenge-logging";
 import { NextResponse } from "next/server";
 import { ActionCategory, Prisma } from "@prisma/client";
 
@@ -185,15 +190,23 @@ export async function POST(req: Request): Promise<NextResponse> {
     const user = await db.user.findUnique({
       where: { clerkId: userId },
       include: {
-        challenges: { orderBy: { createdAt: "desc" }, take: 1 },
+        // The user's challenges, newest first, for the fallback below
+        challenges: {
+          orderBy: { createdAt: "desc" },
+          include: {
+            challenge: {
+              select: { id: true, status: true, endDate: true },
+            },
+          },
+        },
       },
     });
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Use the provided challengeId, or auto-assign from user's latest challenge,
-    // always falling back to global so no action is ever orphaned.
+    // Use the provided challengeId, or auto-assign from the user's latest challenge that still accepts
+    // actions, always falling back to global so no action is ever orphaned.
     await ensureGlobalChallengeExists();
 
     const normalizedBodyChallenge =
@@ -203,8 +216,29 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     const challengeId: string =
       normalizedBodyChallenge ??
-      user.challenges[0]?.challengeId ??
+      user.challenges.find((uc) => loggingBlockedReason(uc.challenge) === null)?.challengeId ??
       GLOBAL_CHALLENGE_ID;
+
+    if (await isDeactivatedInChallenge(user.id, challengeId)) {
+      return NextResponse.json(
+        { error: DEACTIVATED_IN_CHALLENGE_MESSAGE },
+        { status: 403 },
+      );
+    }
+
+    // ── Challenge lifecycle (#54): no logging to archived challenges or after the 2-week grace period ──
+    const challenge = await db.challenge.findUnique({
+      where: { id: challengeId },
+      select: { id: true, status: true, endDate: true },
+    });
+    if (!challenge) {
+      return NextResponse.json({ error: "Challenge not found" }, { status: 404 });
+    }
+
+    const blockedReason = loggingBlockedReason(challenge);
+    if (blockedReason) {
+      return NextResponse.json({ error: blockedReason }, { status: 403 });
+    }
 
     const normalizedNote = note?.trim() || null;
     const normalizedImageUrl = imageUrl || null;

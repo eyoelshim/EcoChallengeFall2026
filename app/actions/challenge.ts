@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { isCurrentUserAdmin } from "@/lib/authz";
 import { auth } from "@clerk/nextjs/server";
+import { challengeEndsAt, isVisibleToParticipant } from "@/lib/challenge-logging";
 
 export async function createChallenge(data: { name: string; startDate?: Date; endDate?: Date }) {
   const { userId } = await auth();
@@ -53,8 +54,10 @@ export async function joinChallenge(code: string) {
     throw new Error("Invalid challenge code");
   }
 
-  // Block joining an expired challenge
-  if (challenge.endDate && new Date(challenge.endDate) < new Date()) {
+  // Block joining a closed or expired challenge. endDate is the start of the last day, so the
+  // challenge stays joinable through the whole last day.
+  const isClosed = challenge.status === "COMPLETED" || challenge.status === "ARCHIVED";
+  if (isClosed || (challenge.endDate && new Date() >= challengeEndsAt(challenge.endDate))) {
     throw new Error("This challenge has ended");
   }
 
@@ -99,5 +102,8 @@ export async function getUserChallenges() {
 
   if (!user) throw new Error("User not found");
 
-  return user.challenges.map(uc => uc.challenge);
+  // #54: completed/archived challenges, and ones past their logging grace period, are removed from
+  // the participant's switcher entirely (the global challenge is always kept)
+  const now = new Date();
+  return user.challenges.map(uc => uc.challenge).filter(challenge => isVisibleToParticipant(challenge, now));
 }

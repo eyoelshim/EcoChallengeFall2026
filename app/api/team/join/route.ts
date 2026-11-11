@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
+import { DEACTIVATED_IN_CHALLENGE_MESSAGE, isDeactivatedInChallenge } from "@/lib/participation";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -54,6 +55,10 @@ export async function POST(req: Request) {
         { error: "You are already a member of this team" },
         { status: 400 }
       );
+    }
+
+    if (team.challengeId && (await isDeactivatedInChallenge(user.id, team.challengeId))) {
+      return NextResponse.json({ error: DEACTIVATED_IN_CHALLENGE_MESSAGE }, { status: 403 });
     }
 
     await db.teamMember.create({ data: { userId: user.id, teamId } });

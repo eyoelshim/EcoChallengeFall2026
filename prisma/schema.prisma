@@ -65,12 +65,15 @@ model Challenge {
 }
 
 model UserChallenge {
-  id          String    @id @default(cuid())
-  userId      String
-  challengeId String
-  user        User      @relation(fields: [userId], references: [id])
-  challenge   Challenge @relation(fields: [challengeId], references: [id])
-  createdAt   DateTime  @default(now())
+  id            String    @id @default(cuid())
+  userId        String
+  challengeId   String
+  user          User      @relation(fields: [userId], references: [id])
+  challenge     Challenge @relation(fields: [challengeId], references: [id])
+  createdAt     DateTime  @default(now())
+  // Set when an admin deactivates the participant in this challenge: they keep their points,
+  // team, and sign-in, but can't log actions or change teams here until reactivated
+  deactivatedAt DateTime?
 
   @@unique([userId, challengeId])
 }
