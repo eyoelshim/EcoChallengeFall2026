@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Bike, Zap, Recycle, Utensils, Droplet, ChevronRight, ChevronLeft, Sparkles } from "lucide-react";
@@ -95,7 +95,10 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(0); // 0=welcome, 1-5=categories, 6=summary
   const [name, setName] = useState("");
-  const [department, setDepartment] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  // Set when an admin invite or the /join link already chose the department
+  const [departmentLocked, setDepartmentLocked] = useState(false);
   const [selected, setSelected] = useState<Record<string, Set<string>>>({
     TRANSPORT: new Set(),
     ENERGY: new Set(),
@@ -105,6 +108,22 @@ export default function OnboardingPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/onboarding")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setDepartments(data.departments);
+        if (data.assignedDepartmentId) {
+          setDepartmentId(data.assignedDepartmentId);
+          setDepartmentLocked(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const departmentName = departments.find((d) => d.id === departmentId)?.name ?? "";
 
   const progressPercent = Math.round(((step + 1) / TOTAL_STEPS) * 100);
 
@@ -133,7 +152,7 @@ export default function OnboardingPage() {
       const res = await fetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ department, actions }),
+        body: JSON.stringify({ departmentId: departmentId || undefined, actions }),
       });
 
       if (!res.ok) {
@@ -211,13 +230,22 @@ export default function OnboardingPage() {
                 </div>
                 <div>
                   <label className="block text-[13px] font-medium text-[#374151] mb-1.5">Department</label>
-                  <input
-                    type="text"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    placeholder="e.g. Engineering"
-                    className="w-full h-12 rounded-xl border border-[#e5e7eb] px-4 text-[14px] text-[#111827] outline-none focus:border-[#0b5d1e] bg-[#f9fafb]"
-                  />
+                  <select
+                    value={departmentId}
+                    onChange={(e) => setDepartmentId(e.target.value)}
+                    disabled={departmentLocked}
+                    className="w-full h-12 rounded-xl border border-[#e5e7eb] px-4 text-[14px] text-[#111827] outline-none focus:border-[#0b5d1e] bg-[#f9fafb] disabled:opacity-70"
+                  >
+                    <option value="">Select your department</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                  {departmentLocked && (
+                    <p className="mt-1.5 text-[12px] text-[#6b7280]">Assigned by your invitation.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -313,10 +341,10 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
-              {department && (
+              {departmentName && (
                 <div className="w-full rounded-xl bg-[#f0fdf4] border border-[#bbf7d0] px-4 py-3 mb-4">
                   <p className="text-[13px] text-[#166534]">
-                    <span className="font-semibold">Department:</span> {department}
+                    <span className="font-semibold">Department:</span> {departmentName}
                   </p>
                 </div>
               )}

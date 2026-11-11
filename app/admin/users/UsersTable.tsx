@@ -286,22 +286,24 @@ export default function UsersTable({ data, filters }: { data: AdminUsersData; fi
                       <Eye className="w-4 h-4" />
                     </Link>
 
-                    {/* Activate / Deactivate Toggle */}
-                    <button
-                      type="button"
-                      title={user.status === "ACTIVE" ? "Deactivate User" : "Activate User"}
-                      onClick={() => {
-                        setStatusError(null);
-                        setStatusModalUser(user);
-                      }}
-                      className={`p-1.5 rounded-lg transition-colors ${
-                        user.status === "ACTIVE"
-                          ? "text-slate-400 hover:text-amber-700 hover:bg-amber-50"
-                          : "text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50"
-                      }`}
-                    >
-                      {user.status === "ACTIVE" ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                    </button>
+                    {/* Activate / Deactivate Toggle; invitees have no account to toggle yet */}
+                    {user.status !== "INVITED" && (
+                      <button
+                        type="button"
+                        title={user.status === "ACTIVE" ? "Deactivate User" : "Activate User"}
+                        onClick={() => {
+                          setStatusError(null);
+                          setStatusModalUser(user);
+                        }}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          user.status === "ACTIVE"
+                            ? "text-slate-400 hover:text-amber-700 hover:bg-amber-50"
+                            : "text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50"
+                        }`}
+                      >
+                        {user.status === "ACTIVE" ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

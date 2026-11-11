@@ -11,6 +11,26 @@ type OnboardingAction = {
   points: number;
 };
 
+/**
+ * Department picker data for onboarding: every department, plus the one already assigned
+ * to this user by a bulk invite or the /join link (in which case the picker is locked).
+ */
+export async function GET() {
+  try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const [departments, user] = await Promise.all([
+      db.department.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      db.user.findUnique({ where: { clerkId: userId }, select: { departmentId: true } }),
+    ]);
+    return NextResponse.json({ departments, assignedDepartmentId: user?.departmentId ?? null });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: "Failed to load departments" }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
@@ -19,7 +39,7 @@ export async function POST(req: Request) {
     await ensureGlobalChallengeExists();
 
     const body = await req.json();
-    const { department, actions }: { department: string; actions: OnboardingAction[] } = body;
+    const { departmentId, actions }: { departmentId?: string; actions: OnboardingAction[] } = body;
 
     const user = await db.user.findUnique({
       where: { clerkId: userId },
@@ -47,12 +67,18 @@ export async function POST(req: Request) {
       });
     }
 
-    // Mark user as onboarded and save department
+    // A department pre-assigned by an admin invite or /join wins over the onboarding pick.
+    // Both fields are written because the Users filter still reads the legacy name.
+    const department =
+      !user.departmentId && departmentId
+        ? await db.department.findUnique({ where: { id: departmentId }, select: { id: true, name: true } })
+        : null;
+
     await db.user.update({
       where: { id: user.id },
       data: {
         onboarded: true,
-        departmentName: department || null,
+        ...(department && { departmentId: department.id, departmentName: department.name }),
       },
     });
 

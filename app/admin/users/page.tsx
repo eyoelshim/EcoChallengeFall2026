@@ -3,6 +3,7 @@ import Link from "next/link";
 import { UserPlus } from "lucide-react";
 import UsersTable from "./UsersTable";
 import { getAdminUsers } from "@/app/actions/admin-users";
+import { CopyJoinLinkButton } from "@/components/admin/CopyJoinLinkButton";
 
 export const dynamic = "force-dynamic";
 
@@ -32,12 +33,13 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <CopyJoinLinkButton />
           <Link
             href="/admin/users/new"
             className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm"
           >
             <UserPlus className="w-4 h-4" />
-            Invite User
+            Invite Users
           </Link>
         </div>
       </div>

@@ -2,7 +2,7 @@
 import type { ActionCategory, UserRole, UserStatus } from "@prisma/client";
 
 export const ROLE_OPTIONS: UserRole[] = ["SUPERADMIN", "ADMIN", "GENERAL_USER"];
-export const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "DEACTIVATED"];
+export const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "INVITED", "DEACTIVATED"];
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   SUPERADMIN: "SuperAdmin",
@@ -13,6 +13,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 export const STATUS_LABELS: Record<UserStatus, string> = {
   ACTIVE: "Active",
   DEACTIVATED: "Deactivated",
+  INVITED: "Invited",
 };
 
 export const ROLE_BADGE_STYLES: Record<UserRole, string> = {
@@ -24,6 +25,7 @@ export const ROLE_BADGE_STYLES: Record<UserRole, string> = {
 export const STATUS_BADGE_STYLES: Record<UserStatus, string> = {
   ACTIVE: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   DEACTIVATED: "bg-rose-50 text-rose-700 ring-rose-200",
+  INVITED: "bg-sky-50 text-sky-700 ring-sky-200",
 };
 
 export const CATEGORY_LABELS: Record<ActionCategory, string> = {

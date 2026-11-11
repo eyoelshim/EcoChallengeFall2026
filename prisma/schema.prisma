@@ -9,7 +9,8 @@ datasource db {
 
 model User {
   id               String          @id @default(cuid())
-  clerkId          String          @unique
+  // Null until an invited user signs up; the dashboard links the Clerk account by email on first sign-in
+  clerkId          String?         @unique
   name             String
   email            String          @unique
   // Legacy free-text department from onboarding; kept on the original column so no data is lost
@@ -190,6 +191,8 @@ enum UserRole {
 enum UserStatus {
   ACTIVE
   DEACTIVATED
+  // Invited by email or via /join but not signed up yet; excluded from active participant counts
+  INVITED
 }
 
 enum ChallengeStatus {
