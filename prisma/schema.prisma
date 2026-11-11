@@ -139,6 +139,7 @@ model ActionCatalog {
   description      String?
   category         ActionCategory
   points           Int               @default(10)
+  isGlobal         Boolean           @default(true)
   challengeActions ChallengeAction[]
   createdAt        DateTime          @default(now())
 }
@@ -147,6 +148,8 @@ model ChallengeAction {
   id              String        @id @default(cuid())
   challengeId     String
   actionCatalogId String
+  pointsOverride  Int?
+  titleOverride   String?
   challenge       Challenge     @relation(fields: [challengeId], references: [id], onDelete: Cascade)
   actionCatalog   ActionCatalog @relation(fields: [actionCatalogId], references: [id], onDelete: Cascade)
 
