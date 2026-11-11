@@ -18,16 +18,26 @@ async function requireAdminActor() {
   return db.user.findUnique({ where: { clerkId: userId } });
 }
 
-function isChallengeStatus(value: string | undefined): value is ChallengeStatus {
-  return !!value && Object.values(ChallengeStatus).includes(value as ChallengeStatus);
+function isChallengeStatus(
+  value: string | undefined,
+): value is ChallengeStatus {
+  return (
+    !!value && Object.values(ChallengeStatus).includes(value as ChallengeStatus)
+  );
 }
 
-export async function getAdminChallenges(filter?: { status?: string; search?: string }) {
+export async function getAdminChallenges(filter?: {
+  status?: string;
+  search?: string;
+}) {
   await requireAdmin();
 
   // The global challenge is the default app experience, not an admin-managed challenge
-  const filters: Prisma.ChallengeWhereInput[] = [{ id: { not: GLOBAL_CHALLENGE_ID } }];
-  if (isChallengeStatus(filter?.status)) filters.push({ status: filter.status });
+  const filters: Prisma.ChallengeWhereInput[] = [
+    { id: { not: GLOBAL_CHALLENGE_ID } },
+  ];
+  if (isChallengeStatus(filter?.status))
+    filters.push({ status: filter.status });
   const search = filter?.search?.trim();
   if (search) {
     filters.push({
@@ -127,12 +137,14 @@ export async function getAdminChallengeById(id: string) {
       name: team.name,
       memberCount: team.members.length,
     })),
-    actions: challenge.challengeActions.map(({ actionCatalog }) => ({
-      id: actionCatalog.id,
-      title: actionCatalog.title,
-      description: actionCatalog.description,
-      category: actionCatalog.category,
-      points: actionCatalog.points,
+    actions: challenge.challengeActions.map((challengeAction) => ({
+      id: challengeAction.actionCatalog.id,
+      title:
+        challengeAction.titleOverride || challengeAction.actionCatalog.title,
+      description: challengeAction.actionCatalog.description,
+      category: challengeAction.actionCatalog.category,
+      points:
+        challengeAction.pointsOverride ?? challengeAction.actionCatalog.points,
     })),
     leaderboard: pointSums.map((row, index) => ({
       rank: index + 1,
@@ -157,7 +169,10 @@ export async function getChallengeFormOptions() {
   await requireAdmin();
 
   const [departments, challenges] = await Promise.all([
-    db.department.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    db.department.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
     db.challenge.findMany({
       where: { id: { not: GLOBAL_CHALLENGE_ID } },
       include: { challengeActions: { include: { actionCatalog: true } } },
@@ -175,12 +190,15 @@ export async function getChallengeFormOptions() {
       description: challenge.description,
       departmentId: challenge.departmentId,
       themeColor: challenge.themeColor,
-      actions: challenge.challengeActions.map(({ actionCatalog }) => ({
-        catalogId: actionCatalog.id,
-        title: actionCatalog.title,
-        description: actionCatalog.description ?? "",
-        category: actionCatalog.category as string,
-        points: actionCatalog.points,
+      actions: challenge.challengeActions.map((challengeAction) => ({
+        catalogId: challengeAction.actionCatalog.id,
+        title:
+          challengeAction.titleOverride || challengeAction.actionCatalog.title,
+        description: challengeAction.actionCatalog.description ?? "",
+        category: challengeAction.actionCatalog.category as string,
+        points:
+          challengeAction.pointsOverride ??
+          challengeAction.actionCatalog.points,
       })),
     })),
   };
@@ -211,7 +229,10 @@ const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const createChallengeSchema = z
   .object({
     name: z.string().trim().min(1, "Challenge name is required."),
-    description: z.string().trim().min(10, "Add a short description (at least 10 characters)."),
+    description: z
+      .string()
+      .trim()
+      .min(10, "Add a short description (at least 10 characters)."),
     category: z.string().trim().min(1, "Pick a category."),
     departmentId: z
       .string()
@@ -238,7 +259,15 @@ const createChallengeSchema = z
     message: "End date must be on or after the start date.",
   });
 
-export type CreateChallengeField = "name" | "description" | "category" | "departmentId" | "startDate" | "endDate" | "themeColor" | "actions";
+export type CreateChallengeField =
+  | "name"
+  | "description"
+  | "category"
+  | "departmentId"
+  | "startDate"
+  | "endDate"
+  | "themeColor"
+  | "actions";
 
 export type CreateChallengeResult = {
   error?: string;
@@ -248,7 +277,11 @@ export type CreateChallengeResult = {
 async function generateChallengeCode() {
   let code = "";
   do {
-    code = Math.random().toString(36).substring(2, 8).toUpperCase().padEnd(6, "0");
+    code = Math.random()
+      .toString(36)
+      .substring(2, 8)
+      .toUpperCase()
+      .padEnd(6, "0");
   } while (await db.challenge.findUnique({ where: { code } }));
   return code;
 }
@@ -260,17 +293,24 @@ function statusForDates(startDate: string, endDate: string): ChallengeStatus {
   return ChallengeStatus.UPCOMING;
 }
 
-export async function createAdminChallenge(formData: FormData): Promise<CreateChallengeResult> {
+export async function createAdminChallenge(
+  formData: FormData,
+): Promise<CreateChallengeResult> {
   let challengeId: string;
   try {
     const actor = await requireAdminActor();
 
-    const parsed = createChallengeSchema.safeParse(Object.fromEntries(formData));
+    const parsed = createChallengeSchema.safeParse(
+      Object.fromEntries(formData),
+    );
     if (!parsed.success) {
       const { fieldErrors } = z.flattenError(parsed.error);
       return {
         fieldErrors: Object.fromEntries(
-          Object.entries(fieldErrors).map(([field, messages]) => [field, messages?.[0]])
+          Object.entries(fieldErrors).map(([field, messages]) => [
+            field,
+            messages?.[0],
+          ]),
         ),
       };
     }
@@ -297,8 +337,12 @@ export async function createAdminChallenge(formData: FormData): Promise<CreateCh
       const catalogIds = new Set<string>();
       for (const action of data.actions) {
         const existing = action.catalogId
-          ? await tx.actionCatalog.findUnique({ where: { id: action.catalogId } })
-          : await tx.actionCatalog.findFirst({ where: { title: action.title, category: action.category } });
+          ? await tx.actionCatalog.findUnique({
+              where: { id: action.catalogId },
+            })
+          : await tx.actionCatalog.findFirst({
+              where: { title: action.title, category: action.category },
+            });
         const catalog =
           existing ??
           (await tx.actionCatalog.create({
@@ -313,7 +357,10 @@ export async function createAdminChallenge(formData: FormData): Promise<CreateCh
       }
       if (catalogIds.size > 0) {
         await tx.challengeAction.createMany({
-          data: [...catalogIds].map((actionCatalogId) => ({ challengeId: created.id, actionCatalogId })),
+          data: [...catalogIds].map((actionCatalogId) => ({
+            challengeId: created.id,
+            actionCatalogId,
+          })),
         });
       }
 
@@ -331,7 +378,9 @@ export async function createAdminChallenge(formData: FormData): Promise<CreateCh
   } catch (err) {
     console.error(err);
     // Next.js hides thrown error messages from the client in production, so return them instead
-    return { error: err instanceof Error ? err.message : "Something went wrong" };
+    return {
+      error: err instanceof Error ? err.message : "Something went wrong",
+    };
   }
 
   revalidatePath(CHALLENGES_PATH);
@@ -339,13 +388,17 @@ export async function createAdminChallenge(formData: FormData): Promise<CreateCh
   redirect(CHALLENGES_PATH);
 }
 
-export async function updateChallengeStatus(id: string, status: ChallengeStatus): Promise<{ error?: string }> {
+export async function updateChallengeStatus(
+  id: string,
+  status: ChallengeStatus,
+): Promise<{ error?: string }> {
   try {
     const actor = await requireAdminActor();
     if (!isChallengeStatus(status)) throw new Error("Invalid status");
 
     const challenge = await db.challenge.findUnique({ where: { id } });
-    if (!challenge || challenge.id === GLOBAL_CHALLENGE_ID) throw new Error("Challenge not found");
+    if (!challenge || challenge.id === GLOBAL_CHALLENGE_ID)
+      throw new Error("Challenge not found");
     if (challenge.status === status) return {};
 
     await db.$transaction([
@@ -360,7 +413,9 @@ export async function updateChallengeStatus(id: string, status: ChallengeStatus)
     ]);
   } catch (err) {
     console.error(err);
-    return { error: err instanceof Error ? err.message : "Something went wrong" };
+    return {
+      error: err instanceof Error ? err.message : "Something went wrong",
+    };
   }
 
   revalidatePath(CHALLENGES_PATH);
