@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Users, Layers, ChevronRight, Building2, Download } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Users, Layers, ChevronRight, Building2, Download, Pencil } from "lucide-react";
 import type { ChallengeStatus } from "@prisma/client";
 
 import { deleteChallenge, getAdminChallengeById, updateChallengeStatus } from "@/app/actions/admin-challenges";
@@ -68,6 +68,13 @@ export default async function ChallengeDetailPage(props: ChallengeDetailPageProp
           Back to challenges
         </Link>
         <div className="flex items-center gap-2">
+          <Link
+            href={`/admin/challenges/${id}/edit`}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white text-slate-700 hover:bg-slate-50 ring-1 ring-slate-200 rounded-lg text-xs font-semibold transition-colors shadow-sm"
+          >
+            <Pencil className="w-3.5 h-3.5 text-slate-500" />
+            Edit Challenge
+          </Link>
           <a
             href={`/api/export/csv?type=participation&challengeId=${id}`}
             download

@@ -12,17 +12,14 @@ import {
 } from "lucide-react";
 import { getAdminTemplates, type AdminTemplateItem } from "@/app/actions/admin-templates";
 import { normalizeActionCategory } from "@/lib/categories";
+import { createAdminChallenge, getChallengeFormOptions } from "@/app/actions/admin-challenges";
 import {
-  createAdminChallenge,
-  getChallengeFormOptions,
-  type CreateChallengeField,
-} from "@/app/actions/admin-challenges";
-
-const categories = ["Campus-wide", "Transportation", "Energy", "Waste", "Food", "Water"];
-
-const DEFAULT_THEME_COLOR = "#10B981";
-
-type FormErrors = Partial<Record<CreateChallengeField, string>>;
+  ChallengeFormFields,
+  DEFAULT_THEME_COLOR,
+  EMPTY_CHALLENGE_VALUES,
+  type ChallengeFormErrors,
+  type ChallengeFormValues,
+} from "../ChallengeFormFields";
 
 type FormOptions = Awaited<ReturnType<typeof getChallengeFormOptions>>;
 
@@ -34,34 +31,56 @@ type StagedAction = {
   points: number;
 };
 
-const inputBaseClass =
-  "mt-1 block w-full rounded-lg border px-3 py-2 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500";
-
 function formatDateOffset(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
+// Form values and staged actions from a template; shared by the dropdown and the ?template= link from the gallery
+function fromTemplate(preset: AdminTemplateItem) {
+  return {
+    values: {
+      name: preset.name,
+      category: preset.category,
+      description: preset.description,
+      themeColor: preset.themeColor || DEFAULT_THEME_COLOR,
+      startDate: new Date().toISOString().slice(0, 10),
+      endDate: formatDateOffset(preset.days || 7),
+    },
+    actions: preset.actions.map((act) => ({
+      catalogId: act.catalogId,
+      title: act.title,
+      description: act.description,
+      category: normalizeActionCategory(act.category),
+      points: act.points,
+    })),
+  };
+}
+
 export default function NewChallengePage() {
   const [options, setOptions] = useState<FormOptions>({ departments: [], challenges: [] });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [selectedCloneId, setSelectedCloneId] = useState<string>("");
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [themeColor, setThemeColor] = useState(DEFAULT_THEME_COLOR);
-  const [description, setDescription] = useState("");
+  const [values, setValues] = useState<ChallengeFormValues>(EMPTY_CHALLENGE_VALUES);
   const [stagedActions, setStagedActions] = useState<StagedAction[]>([]);
 
   const [presetList, setPresetList] = useState<AdminTemplateItem[]>([]);
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [errors, setErrors] = useState<ChallengeFormErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
 
   const challengesList = options.challenges;
+
+  const setField = (field: keyof ChallengeFormValues, value: string) =>
+    setValues((current) => ({ ...current, [field]: value }));
+
+  // Templates don't set a department, so keep whatever the admin already picked
+  const applyTemplateValues = (preset: AdminTemplateItem) => {
+    const { values: templateValues, actions } = fromTemplate(preset);
+    setValues((current) => ({ ...current, ...templateValues }));
+    setStagedActions(actions);
+  };
 
   useEffect(() => {
     getAdminTemplates()
@@ -74,23 +93,9 @@ export default function NewChallengePage() {
             const found = templates.find((p) => p.id === templateId);
             if (found) {
               setSelectedTemplateId(found.id);
-              setName(found.name);
-              setCategory(found.category);
-              setDescription(found.description);
-              setThemeColor(found.themeColor || DEFAULT_THEME_COLOR);
-
-              const todayStr = new Date().toISOString().slice(0, 10);
-              setStartDate(todayStr);
-              setEndDate(formatDateOffset(found.days || 7));
-              setStagedActions(
-                found.actions.map((act) => ({
-                  catalogId: act.catalogId,
-                  title: act.title,
-                  description: act.description,
-                  category: normalizeActionCategory(act.category),
-                  points: act.points,
-                }))
-              );
+              const { values: templateValues, actions } = fromTemplate(found);
+              setValues((current) => ({ ...current, ...templateValues }));
+              setStagedActions(actions);
             }
           }
         }
@@ -107,47 +112,19 @@ export default function NewChallengePage() {
   const resetForm = () => {
     setSelectedTemplateId("");
     setSelectedCloneId("");
-    setName("");
-    setCategory("");
-    setDepartmentId("");
-    setStartDate("");
-    setEndDate("");
-    setThemeColor(DEFAULT_THEME_COLOR);
-    setDescription("");
+    setValues(EMPTY_CHALLENGE_VALUES);
     setStagedActions([]);
   };
 
   const applyTemplate = (templateId: string) => {
     setSelectedCloneId("");
     setSelectedTemplateId(templateId);
-    if (!templateId) {
-      setStagedActions([]);
-      return;
-    }
-
-    const preset = presetList.find((p) => p.id === templateId);
+    const preset = templateId ? presetList.find((p) => p.id === templateId) : undefined;
     if (!preset) {
       setStagedActions([]);
       return;
     }
-
-    setName(preset.name);
-    setCategory(preset.category);
-    setDescription(preset.description);
-    setThemeColor(preset.themeColor || DEFAULT_THEME_COLOR);
-
-    const todayStr = new Date().toISOString().slice(0, 10);
-    setStartDate(todayStr);
-    setEndDate(formatDateOffset(preset.days || 7));
-    setStagedActions(
-      preset.actions.map((act) => ({
-        catalogId: act.catalogId,
-        title: act.title,
-        description: act.description,
-        category: normalizeActionCategory(act.category),
-        points: act.points,
-      }))
-    );
+    applyTemplateValues(preset);
   };
 
   const applyClone = (challengeId: string) => {
@@ -161,15 +138,15 @@ export default function NewChallengePage() {
     const pastChallenge = challengesList.find((c) => c.id === challengeId);
     if (!pastChallenge) return;
 
-    setName(`${pastChallenge.name} (Clone)`);
-    setCategory(pastChallenge.category ?? "");
-    setDepartmentId(pastChallenge.departmentId ?? "");
-    setThemeColor(pastChallenge.themeColor || DEFAULT_THEME_COLOR);
-    setDescription(pastChallenge.description ?? "");
-
-    const todayStr = new Date().toISOString().slice(0, 10);
-    setStartDate(todayStr);
-    setEndDate(formatDateOffset(7));
+    setValues({
+      name: `${pastChallenge.name} (Clone)`,
+      category: pastChallenge.category ?? "",
+      departmentId: pastChallenge.departmentId ?? "",
+      themeColor: pastChallenge.themeColor || DEFAULT_THEME_COLOR,
+      description: pastChallenge.description ?? "",
+      startDate: new Date().toISOString().slice(0, 10),
+      endDate: formatDateOffset(7),
+    });
 
     setStagedActions(
       pastChallenge.actions.map((act) => ({
@@ -195,16 +172,6 @@ export default function NewChallengePage() {
       if (result?.error) setFormError(result.error);
     });
   }
-
-  function inputClass(error: string | undefined) {
-    if (error) {
-      return inputBaseClass + " border-red-400";
-    }
-    return inputBaseClass + " border-slate-300";
-  }
-
-  // A cloned challenge may use a category outside the standard list; keep it selectable
-  const categoryOptions = category && !categories.includes(category) ? [...categories, category] : categories;
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -316,93 +283,12 @@ export default function NewChallengePage() {
               <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
             )}
 
-            <Field label="Challenge Name" error={errors.name}>
-              <input
-                name="name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="e.g. Spring 2026 Energy Saver"
-                className={inputClass(errors.name)}
-              />
-            </Field>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <Field label="Category" error={errors.category}>
-                <select
-                  name="category"
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value)}
-                  className={inputClass(errors.category) + " bg-white"}
-                >
-                  <option value="">Select a category…</option>
-                  {categoryOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Department" error={errors.departmentId}>
-                <select
-                  name="departmentId"
-                  value={departmentId}
-                  onChange={(event) => setDepartmentId(event.target.value)}
-                  className={inputClass(errors.departmentId) + " bg-white"}
-                >
-                  <option value="">All departments</option>
-                  {options.departments.map((dept) => (
-                    <option key={dept.id} value={dept.id}>
-                      {dept.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Start Date" error={errors.startDate}>
-                <input
-                  type="date"
-                  name="startDate"
-                  value={startDate}
-                  onChange={(event) => setStartDate(event.target.value)}
-                  className={inputClass(errors.startDate)}
-                />
-              </Field>
-
-              <Field label="End Date" error={errors.endDate}>
-                <input
-                  type="date"
-                  name="endDate"
-                  value={endDate}
-                  onChange={(event) => setEndDate(event.target.value)}
-                  className={inputClass(errors.endDate)}
-                />
-              </Field>
-
-              <Field label="Theme Color" error={errors.themeColor}>
-                <div className="mt-1 flex items-center gap-3">
-                  <input
-                    type="color"
-                    name="themeColor"
-                    value={themeColor}
-                    onChange={(event) => setThemeColor(event.target.value)}
-                    className="h-9 w-14 cursor-pointer rounded border border-slate-300 bg-white"
-                  />
-                  <span className="font-mono text-sm text-slate-500">{themeColor.toUpperCase()}</span>
-                </div>
-              </Field>
-            </div>
-
-            <Field label="Description" error={errors.description}>
-              <textarea
-                name="description"
-                rows={4}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Describe the rules, motivations, and impact goals of this challenge..."
-                className={inputClass(errors.description)}
-              />
-            </Field>
+            <ChallengeFormFields
+              values={values}
+              onChange={setField}
+              errors={errors}
+              departments={options.departments}
+            />
 
             {/* Staged Actions Preview when Template or Clone Applied */}
             {stagedActions.length > 0 && (
@@ -466,21 +352,5 @@ export default function NewChallengePage() {
             </div>
           </form>
     </div>
-  );
-}
-
-type FieldProps = {
-  label: string;
-  error: string | undefined;
-  children: React.ReactNode;
-};
-
-function Field(props: FieldProps) {
-  return (
-    <label className="block">
-      <span className="text-sm font-medium text-slate-700">{props.label}</span>
-      {props.children}
-      {props.error && <span className="mt-1 block text-xs text-red-600">{props.error}</span>}
-    </label>
   );
 }
