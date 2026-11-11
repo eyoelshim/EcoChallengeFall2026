@@ -1,3 +1,11 @@
+/**
+ * @file admin-actions.ts
+ * @author Uyen Thy Duong
+ * @date Fall 2026
+ * @purpose Server actions managing the Global Action Catalog and isolated
+ *   in-challenge actions with one-way override workflows.
+ */
+
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -10,46 +18,97 @@ const CHALLENGES_PATH = "/admin/challenges";
 const ACTIONS_PATH = "/admin/actions";
 
 export interface GlobalActionItem {
-  id: string;
-  title: string;
-  description: string;
-  category: ActionCategory;
-  points: number;
-  challengeCount?: number;
-  createdAt: Date;
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly category: ActionCategory;
+  readonly points: number;
+  readonly isGlobal: boolean;
+  readonly challengeCount?: number;
+  readonly createdAt: Date;
 }
 
 export interface ChallengeActionItem {
-  id: string;
-  actionCatalogId: string;
-  challengeId: string;
-  title: string;
-  description: string;
-  category: ActionCategory;
-  points: number;
+  readonly id: string;
+  readonly actionCatalogId: string;
+  readonly challengeId: string;
+  readonly title: string;
+  readonly description: string;
+  readonly category: ActionCategory;
+  readonly points: number;
+  readonly pointsOverride?: number | null;
+  readonly titleOverride?: string | null;
+  readonly basePoints: number;
+  readonly baseTitle: string;
+  readonly isGlobal: boolean;
+}
+
+export interface ChallengeDetailSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly code: string;
+  readonly category: string | null;
+  readonly themeColor: string | null;
+  readonly status: string;
+}
+
+export interface AddChallengeActionInput {
+  readonly catalogId?: string;
+  readonly title: string;
+  readonly description?: string;
+  readonly category: string;
+  readonly points: number;
+  readonly addToGlobalCatalog?: boolean;
+}
+
+export interface UpdateChallengeActionInput {
+  readonly title: string;
+  readonly description?: string;
+  readonly category: string;
+  readonly points: number;
+  readonly contributeToGlobal?: boolean;
+}
+
+export interface ActionOperationResult {
+  readonly success: boolean;
+  readonly action?: ChallengeActionItem;
+  readonly error?: string;
 }
 
 // ---------------------------------------------------------------------------
 // Global Action Catalog Server Actions
 // ---------------------------------------------------------------------------
 
-export async function getGlobalActions(filters?: { search?: string; category?: string }): Promise<GlobalActionItem[]> {
+/**
+ * Retrieves all global action catalog entries available for challenge attachment.
+ *
+ * @param filters - Optional search query and category filters
+ * @returns Promise resolving to an array of global action items
+ */
+export async function getGlobalActions(filters?: {
+  readonly search?: string;
+  readonly category?: string;
+}): Promise<GlobalActionItem[]> {
   await requireAdmin();
 
-  const where: Prisma.ActionCatalogWhereInput = {};
+  const whereCondition: Prisma.ActionCatalogWhereInput = {
+    isGlobal: true,
+  };
+
   if (filters?.search?.trim()) {
-    const q = filters.search.trim();
-    where.OR = [
-      { title: { contains: q, mode: "insensitive" } },
-      { description: { contains: q, mode: "insensitive" } },
+    const searchQuery = filters.search.trim();
+    whereCondition.OR = [
+      { title: { contains: searchQuery, mode: "insensitive" } },
+      { description: { contains: searchQuery, mode: "insensitive" } },
     ];
   }
+
   if (filters?.category && filters.category !== "All") {
-    where.category = normalizeActionCategory(filters.category);
+    whereCondition.category = normalizeActionCategory(filters.category);
   }
 
-  const items = await db.actionCatalog.findMany({
-    where,
+  const catalogRecords = await db.actionCatalog.findMany({
+    where: whereCondition,
     include: {
       _count: {
         select: { challengeActions: true },
@@ -58,101 +117,148 @@ export async function getGlobalActions(filters?: { search?: string; category?: s
     orderBy: { createdAt: "desc" },
   });
 
-  return items.map((item) => ({
-    id: item.id,
-    title: item.title,
-    description: item.description ?? "",
-    category: item.category,
-    points: item.points,
-    challengeCount: item._count.challengeActions,
-    createdAt: item.createdAt,
+  return catalogRecords.map((catalogRecord) => ({
+    id: catalogRecord.id,
+    title: catalogRecord.title,
+    description: catalogRecord.description ?? "",
+    category: catalogRecord.category,
+    points: catalogRecord.points,
+    isGlobal: catalogRecord.isGlobal,
+    challengeCount: catalogRecord._count.challengeActions,
+    createdAt: catalogRecord.createdAt,
   }));
 }
 
-export async function createGlobalAction(data: {
-  title: string;
-  description?: string;
-  category: string;
-  points: number;
+/**
+ * Creates a new action directly in the Global Action Catalog.
+ *
+ * @param actionData - Title, description, category, and base points
+ * @returns Promise resolving to the created global action item
+ */
+export async function createGlobalAction(actionData: {
+  readonly title: string;
+  readonly description?: string;
+  readonly category: string;
+  readonly points: number;
 }): Promise<GlobalActionItem> {
   await requireAdmin();
 
-  const created = await db.actionCatalog.create({
+  const createdAction = await db.actionCatalog.create({
     data: {
-      title: data.title.trim(),
-      description: data.description?.trim() || null,
-      category: normalizeActionCategory(data.category),
-      points: Math.max(1, Number(data.points) || 10),
+      title: actionData.title.trim(),
+      description: actionData.description?.trim() || null,
+      category: normalizeActionCategory(actionData.category),
+      points: Math.max(1, Number(actionData.points) || 10),
+      isGlobal: true,
     },
   });
 
   revalidatePath(ACTIONS_PATH);
+
   return {
-    id: created.id,
-    title: created.title,
-    description: created.description ?? "",
-    category: created.category,
-    points: created.points,
+    id: createdAction.id,
+    title: createdAction.title,
+    description: createdAction.description ?? "",
+    category: createdAction.category,
+    points: createdAction.points,
+    isGlobal: createdAction.isGlobal,
     challengeCount: 0,
-    createdAt: created.createdAt,
+    createdAt: createdAction.createdAt,
   };
 }
 
+/**
+ * Updates a global action definition in the master catalog.
+ *
+ * @param actionId - Target action catalog identifier
+ * @param updateData - Fields to update
+ * @returns Promise resolving to the updated global action item
+ */
 export async function updateGlobalAction(
-  id: string,
-  data: {
-    title?: string;
-    description?: string;
-    category?: string;
-    points?: number;
-  }
+  actionId: string,
+  updateData: {
+    readonly title?: string;
+    readonly description?: string;
+    readonly category?: string;
+    readonly points?: number;
+  },
 ): Promise<GlobalActionItem> {
   await requireAdmin();
 
-  const updateData: Prisma.ActionCatalogUpdateInput = {};
-  if (data.title !== undefined) updateData.title = data.title.trim();
-  if (data.description !== undefined) updateData.description = data.description.trim() || null;
-  if (data.category !== undefined) updateData.category = normalizeActionCategory(data.category);
-  if (data.points !== undefined) updateData.points = Math.max(1, Number(data.points) || 10);
+  const prismaUpdateData: Prisma.ActionCatalogUpdateInput = {};
+  if (updateData.title !== undefined) {
+    prismaUpdateData.title = updateData.title.trim();
+  }
+  if (updateData.description !== undefined) {
+    prismaUpdateData.description = updateData.description.trim() || null;
+  }
+  if (updateData.category !== undefined) {
+    prismaUpdateData.category = normalizeActionCategory(updateData.category);
+  }
+  if (updateData.points !== undefined) {
+    prismaUpdateData.points = Math.max(1, Number(updateData.points) || 10);
+  }
 
-  const updated = await db.actionCatalog.update({
-    where: { id },
-    data: updateData,
+  const updatedAction = await db.actionCatalog.update({
+    where: { id: actionId },
+    data: prismaUpdateData,
   });
 
   revalidatePath(ACTIONS_PATH);
   revalidatePath(CHALLENGES_PATH);
+
   return {
-    id: updated.id,
-    title: updated.title,
-    description: updated.description ?? "",
-    category: updated.category,
-    points: updated.points,
-    createdAt: updated.createdAt,
+    id: updatedAction.id,
+    title: updatedAction.title,
+    description: updatedAction.description ?? "",
+    category: updatedAction.category,
+    points: updatedAction.points,
+    isGlobal: updatedAction.isGlobal,
+    createdAt: updatedAction.createdAt,
   };
 }
 
-// Permanent deletion is SuperAdmin-only (Nov 5 2026 stakeholder decision)
-export async function deleteGlobalAction(id: string): Promise<{ success: boolean; error?: string }> {
+/**
+ * Deletes an action from the Global Action Catalog. Permanent deletion is SuperAdmin-only.
+ *
+ * @param actionId - Action catalog record identifier
+ * @returns Promise resolving to an operation status
+ */
+export async function deleteGlobalAction(
+  actionId: string,
+): Promise<ActionOperationResult> {
   try {
     await requireSuperAdmin();
     await db.actionCatalog.delete({
-      where: { id },
+      where: { id: actionId },
     });
     revalidatePath(ACTIONS_PATH);
     revalidatePath(CHALLENGES_PATH);
     return { success: true };
-  } catch (err) {
-    console.error("Failed to delete global action:", err);
-    return { success: false, error: err instanceof Error ? err.message : "Failed to delete action" };
+  } catch (caughtError) {
+    return {
+      success: false,
+      error:
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to delete global action.",
+    };
   }
 }
 
 // ---------------------------------------------------------------------------
-// In-Challenge Actions Server Actions
+// In-Challenge Actions Server Actions (One-Way Override Flow)
 // ---------------------------------------------------------------------------
 
-export async function getChallengeDetailForActions(challengeId: string) {
+/**
+ * Retrieves summary metadata for a challenge to display on the action management page.
+ *
+ * @param challengeId - Identifier of the challenge
+ * @returns Promise resolving to challenge metadata or null
+ */
+export async function getChallengeDetailForActions(
+  challengeId: string,
+): Promise<ChallengeDetailSummary | null> {
   await requireAdmin();
 
   return db.challenge.findUnique({
@@ -168,10 +274,18 @@ export async function getChallengeDetailForActions(challengeId: string) {
   });
 }
 
-export async function getChallengeActions(challengeId: string): Promise<ChallengeActionItem[]> {
+/**
+ * Retrieves all actions linked to a specific challenge, applying isolated local overrides.
+ *
+ * @param challengeId - Target challenge identifier
+ * @returns Promise resolving to list of challenge action items with resolved points and titles
+ */
+export async function getChallengeActions(
+  challengeId: string,
+): Promise<ChallengeActionItem[]> {
   await requireAdmin();
 
-  const links = await db.challengeAction.findMany({
+  const challengeActionLinks = await db.challengeAction.findMany({
     where: { challengeId },
     include: {
       actionCatalog: true,
@@ -183,72 +297,128 @@ export async function getChallengeActions(challengeId: string): Promise<Challeng
     },
   });
 
-  return links.map((link) => ({
-    id: link.id,
-    actionCatalogId: link.actionCatalog.id,
-    challengeId: link.challengeId,
-    title: link.actionCatalog.title,
-    description: link.actionCatalog.description ?? "",
-    category: link.actionCatalog.category,
-    points: link.actionCatalog.points,
-  }));
+  return challengeActionLinks.map((linkRecord) => {
+    const effectivePoints =
+      linkRecord.pointsOverride ?? linkRecord.actionCatalog.points;
+    const effectiveTitle =
+      linkRecord.titleOverride || linkRecord.actionCatalog.title;
+
+    return {
+      id: linkRecord.id,
+      actionCatalogId: linkRecord.actionCatalog.id,
+      challengeId: linkRecord.challengeId,
+      title: effectiveTitle,
+      description: linkRecord.actionCatalog.description ?? "",
+      category: linkRecord.actionCatalog.category,
+      points: effectivePoints,
+      pointsOverride: linkRecord.pointsOverride,
+      titleOverride: linkRecord.titleOverride,
+      basePoints: linkRecord.actionCatalog.points,
+      baseTitle: linkRecord.actionCatalog.title,
+      isGlobal: linkRecord.actionCatalog.isGlobal,
+    };
+  });
 }
 
+/**
+ * Attaches an action to a challenge. Supports 1-click import from catalog,
+ * custom isolated actions (isGlobal: false), and optional contribution to catalog.
+ *
+ * @param challengeId - Target challenge identifier
+ * @param actionInput - Action parameters and catalog contribution flag
+ * @returns Promise resolving to operation result containing the linked challenge action
+ */
 export async function addActionToChallenge(
   challengeId: string,
-  actionData: {
-    catalogId?: string;
-    title: string;
-    description?: string;
-    category: string;
-    points: number;
-  }
-): Promise<{ success: boolean; action?: ChallengeActionItem; error?: string }> {
+  actionInput: AddChallengeActionInput,
+): Promise<ActionOperationResult> {
   await requireAdmin();
 
   try {
-    const category = normalizeActionCategory(actionData.category);
-    const points = Math.max(1, Number(actionData.points) || 10);
-    const title = actionData.title.trim();
-    const description = actionData.description?.trim() || null;
+    const normalizedCategory = normalizeActionCategory(actionInput.category);
+    const requestedPoints = Math.max(1, Number(actionInput.points) || 10);
+    const sanitizedTitle = actionInput.title.trim();
+    const sanitizedDescription = actionInput.description?.trim() || null;
+    const shouldContributeToGlobal = Boolean(actionInput.addToGlobalCatalog);
 
-    let catalogId = actionData.catalogId;
+    let resolvedCatalogId = actionInput.catalogId;
+    let computedPointsOverride: number | null = null;
 
-    if (!catalogId) {
-      // Find matching existing action in catalog or create new one
-      const existing = await db.actionCatalog.findFirst({
-        where: {
-          title: { equals: title, mode: "insensitive" },
-          category,
-        },
+    if (resolvedCatalogId) {
+      // 1-Click Import from Global Catalog
+      const existingCatalogItem = await db.actionCatalog.findUnique({
+        where: { id: resolvedCatalogId },
       });
 
-      if (existing) {
-        catalogId = existing.id;
-      } else {
-        const createdCatalog = await db.actionCatalog.create({
-          data: {
-            title,
-            description,
-            category,
-            points,
+      if (!existingCatalogItem) {
+        return {
+          success: false,
+          error: "Selected catalog action does not exist.",
+        };
+      }
+
+      // If imported points differ from base catalog points, store override
+      if (requestedPoints !== existingCatalogItem.points) {
+        computedPointsOverride = requestedPoints;
+      }
+    } else {
+      // Custom challenge action creation
+      if (shouldContributeToGlobal) {
+        // Admin opted to contribute to the Global Catalog
+        const existingGlobalMatch = await db.actionCatalog.findFirst({
+          where: {
+            title: { equals: sanitizedTitle, mode: "insensitive" },
+            category: normalizedCategory,
+            isGlobal: true,
           },
         });
-        catalogId = createdCatalog.id;
+
+        if (existingGlobalMatch) {
+          resolvedCatalogId = existingGlobalMatch.id;
+          if (requestedPoints !== existingGlobalMatch.points) {
+            computedPointsOverride = requestedPoints;
+          }
+        } else {
+          const createdCatalogRecord = await db.actionCatalog.create({
+            data: {
+              title: sanitizedTitle,
+              description: sanitizedDescription,
+              category: normalizedCategory,
+              points: requestedPoints,
+              isGlobal: true,
+            },
+          });
+          resolvedCatalogId = createdCatalogRecord.id;
+        }
+      } else {
+        // Private / Challenge-isolated action (not exposed globally)
+        const createdPrivateAction = await db.actionCatalog.create({
+          data: {
+            title: sanitizedTitle,
+            description: sanitizedDescription,
+            category: normalizedCategory,
+            points: requestedPoints,
+            isGlobal: false,
+          },
+        });
+        resolvedCatalogId = createdPrivateAction.id;
       }
     }
 
-    const challengeAction = await db.challengeAction.upsert({
+    const linkedChallengeAction = await db.challengeAction.upsert({
       where: {
         challengeId_actionCatalogId: {
           challengeId,
-          actionCatalogId: catalogId,
+          actionCatalogId: resolvedCatalogId,
         },
       },
-      update: {},
+      update: {
+        pointsOverride: computedPointsOverride,
+      },
       create: {
         challengeId,
-        actionCatalogId: catalogId,
+        actionCatalogId: resolvedCatalogId,
+        pointsOverride: computedPointsOverride,
       },
       include: {
         actionCatalog: true,
@@ -258,60 +428,219 @@ export async function addActionToChallenge(
     revalidatePath(`${CHALLENGES_PATH}/${challengeId}`);
     revalidatePath(`${CHALLENGES_PATH}/${challengeId}/actions`);
 
+    const effectivePoints =
+      linkedChallengeAction.pointsOverride ??
+      linkedChallengeAction.actionCatalog.points;
+    const effectiveTitle =
+      linkedChallengeAction.titleOverride ||
+      linkedChallengeAction.actionCatalog.title;
+
     return {
       success: true,
       action: {
-        id: challengeAction.id,
-        actionCatalogId: challengeAction.actionCatalog.id,
-        challengeId: challengeAction.challengeId,
-        title: challengeAction.actionCatalog.title,
-        description: challengeAction.actionCatalog.description ?? "",
-        category: challengeAction.actionCatalog.category,
-        points: challengeAction.actionCatalog.points,
+        id: linkedChallengeAction.id,
+        actionCatalogId: linkedChallengeAction.actionCatalog.id,
+        challengeId: linkedChallengeAction.challengeId,
+        title: effectiveTitle,
+        description: linkedChallengeAction.actionCatalog.description ?? "",
+        category: linkedChallengeAction.actionCatalog.category,
+        points: effectivePoints,
+        pointsOverride: linkedChallengeAction.pointsOverride,
+        titleOverride: linkedChallengeAction.titleOverride,
+        basePoints: linkedChallengeAction.actionCatalog.points,
+        baseTitle: linkedChallengeAction.actionCatalog.title,
+        isGlobal: linkedChallengeAction.actionCatalog.isGlobal,
       },
     };
-  } catch (err) {
-    console.error("Failed to add action to challenge:", err);
-    return { success: false, error: err instanceof Error ? err.message : "Failed to add action" };
+  } catch (caughtError) {
+    return {
+      success: false,
+      error:
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to add action to challenge.",
+    };
   }
 }
 
+/**
+ * Updates an action within a challenge using strict One-Way Flow:
+ * Modifying points or titles updates ChallengeAction.pointsOverride and
+ * ChallengeAction.titleOverride without altering the ActionCatalog or affecting
+ * other challenges.
+ *
+ * @param actionCatalogId - Linked action catalog identifier
+ * @param challengeId - Scoped challenge identifier
+ * @param updateData - New title, description, category, and points
+ * @returns Promise resolving to operation status
+ */
 export async function updateChallengeAction(
   actionCatalogId: string,
   challengeId: string,
-  actionData: {
-    title: string;
-    description?: string;
-    category: string;
-    points: number;
-  }
-): Promise<{ success: boolean; error?: string }> {
+  updateData: UpdateChallengeActionInput,
+): Promise<ActionOperationResult> {
   await requireAdmin();
 
   try {
-    await db.actionCatalog.update({
-      where: { id: actionCatalogId },
+    const sanitizedTitle = updateData.title.trim();
+    const sanitizedPoints = Math.max(1, Number(updateData.points) || 10);
+    const sanitizedDescription = updateData.description?.trim() || null;
+    const normalizedCategory = normalizeActionCategory(updateData.category);
+
+    // Fetch existing challenge action link
+    const existingLink = await db.challengeAction.findUnique({
+      where: {
+        challengeId_actionCatalogId: {
+          challengeId,
+          actionCatalogId,
+        },
+      },
+      include: {
+        actionCatalog: true,
+      },
+    });
+
+    if (!existingLink) {
+      return {
+        success: false,
+        error: "Action is not associated with this challenge.",
+      };
+    }
+
+    const isCatalogItemGlobal = existingLink.actionCatalog.isGlobal;
+
+    // Handle catalog contribution if requested for a private action
+    if (!isCatalogItemGlobal && updateData.contributeToGlobal) {
+      await db.actionCatalog.update({
+        where: { id: actionCatalogId },
+        data: {
+          isGlobal: true,
+          title: sanitizedTitle,
+          description: sanitizedDescription,
+          category: normalizedCategory,
+          points: sanitizedPoints,
+        },
+      });
+    } else if (!isCatalogItemGlobal) {
+      // Private challenge-only action: update catalog description/category metadata
+      await db.actionCatalog.update({
+        where: { id: actionCatalogId },
+        data: {
+          title: sanitizedTitle,
+          description: sanitizedDescription,
+          category: normalizedCategory,
+        },
+      });
+    }
+
+    // STRICT ONE-WAY FLOW: Store overrides on ChallengeAction link
+    // Never mutate points on a global ActionCatalog record!
+    await db.challengeAction.update({
+      where: {
+        challengeId_actionCatalogId: {
+          challengeId,
+          actionCatalogId,
+        },
+      },
       data: {
-        title: actionData.title.trim(),
-        description: actionData.description?.trim() || null,
-        category: normalizeActionCategory(actionData.category),
-        points: Math.max(1, Number(actionData.points) || 10),
+        pointsOverride: sanitizedPoints,
+        titleOverride:
+          sanitizedTitle !== existingLink.actionCatalog.title
+            ? sanitizedTitle
+            : null,
       },
     });
 
     revalidatePath(`${CHALLENGES_PATH}/${challengeId}`);
     revalidatePath(`${CHALLENGES_PATH}/${challengeId}/actions`);
+
     return { success: true };
-  } catch (err) {
-    console.error("Failed to update challenge action:", err);
-    return { success: false, error: err instanceof Error ? err.message : "Failed to update action" };
+  } catch (caughtError) {
+    return {
+      success: false,
+      error:
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to update challenge action.",
+    };
   }
 }
 
+/**
+ * Promotes a challenge-specific action into the Global Action Catalog,
+ * allowing other challenges to discover and attach it.
+ *
+ * @param actionCatalogId - Target action catalog identifier
+ * @param challengeId - Optional challenge ID to sync current overrides
+ * @returns Promise resolving to operation status
+ */
+export async function contributeActionToGlobalCatalog(
+  actionCatalogId: string,
+  challengeId?: string,
+): Promise<ActionOperationResult> {
+  await requireAdmin();
+
+  try {
+    let titleToPublish: string | undefined;
+    let pointsToPublish: number | undefined;
+
+    if (challengeId) {
+      const challengeAction = await db.challengeAction.findUnique({
+        where: {
+          challengeId_actionCatalogId: {
+            challengeId,
+            actionCatalogId,
+          },
+        },
+      });
+
+      if (challengeAction?.titleOverride) {
+        titleToPublish = challengeAction.titleOverride;
+      }
+      if (challengeAction?.pointsOverride) {
+        pointsToPublish = challengeAction.pointsOverride;
+      }
+    }
+
+    await db.actionCatalog.update({
+      where: { id: actionCatalogId },
+      data: {
+        isGlobal: true,
+        ...(titleToPublish ? { title: titleToPublish } : {}),
+        ...(pointsToPublish ? { points: pointsToPublish } : {}),
+      },
+    });
+
+    revalidatePath(ACTIONS_PATH);
+    if (challengeId) {
+      revalidatePath(`${CHALLENGES_PATH}/${challengeId}`);
+      revalidatePath(`${CHALLENGES_PATH}/${challengeId}/actions`);
+    }
+
+    return { success: true };
+  } catch (caughtError) {
+    return {
+      success: false,
+      error:
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to contribute action to global catalog.",
+    };
+  }
+}
+
+/**
+ * Removes the association between an action and a challenge without deleting
+ * the action from the Global Action Catalog. Permanent removal is SuperAdmin-only.
+ *
+ * @param challengeId - Target challenge identifier
+ * @param actionCatalogId - Linked action catalog identifier
+ * @returns Promise resolving to operation status
+ */
 export async function removeActionFromChallenge(
   challengeId: string,
-  actionCatalogId: string
-): Promise<{ success: boolean; error?: string }> {
+  actionCatalogId: string,
+): Promise<ActionOperationResult> {
   try {
     await requireSuperAdmin();
     await db.challengeAction.delete({
@@ -326,8 +655,13 @@ export async function removeActionFromChallenge(
     revalidatePath(`${CHALLENGES_PATH}/${challengeId}`);
     revalidatePath(`${CHALLENGES_PATH}/${challengeId}/actions`);
     return { success: true };
-  } catch (err) {
-    console.error("Failed to remove action from challenge:", err);
-    return { success: false, error: err instanceof Error ? err.message : "Failed to remove action" };
+  } catch (caughtError) {
+    return {
+      success: false,
+      error:
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to remove action from challenge.",
+    };
   }
 }
