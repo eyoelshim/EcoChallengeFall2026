@@ -6,10 +6,10 @@ import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { ActionCategory, ChallengeStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { isCurrentUserAdmin, requireAdmin } from "@/lib/authz";
+import { isCurrentUserAdmin, requireAdmin, requireSuperAdmin } from "@/lib/authz";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 
-const CHALLENGES_PATH = "/admin/admin/challenges";
+const CHALLENGES_PATH = "/admin/challenges";
 
 async function requireAdminActor() {
   const { userId } = await auth();
@@ -92,6 +92,8 @@ export async function getAdminChallengeById(id: string) {
       actions: {
         take: 20,
         orderBy: { date: "desc" },
+        // imageUrl holds inline base64 photos (MBs per row) and is never shown here
+        omit: { imageUrl: true },
         include: { user: { select: { id: true, name: true } } },
       },
     },
@@ -420,5 +422,49 @@ export async function updateChallengeStatus(
 
   revalidatePath(CHALLENGES_PATH);
   revalidatePath(`${CHALLENGES_PATH}/${id}`);
+  return {};
+}
+
+/**
+ * Permanently deletes a challenge along with its teams, enrollments, team requests,
+ * configured actions, and every action logged inside it.
+ *
+ * @param id Challenge id to delete.
+ * @returns An empty object on success, or `{ error }` with a client-safe message.
+ *
+ * Intent: Hard deletion is SuperAdmin-only; regular admins archive instead via
+ * updateChallengeStatus. Points earned in this challenge are removed with it, so
+ * participants' lifetime totals drop. Most relations have no cascade in the schema,
+ * so dependents are cleared explicitly in one transaction.
+ */
+export async function deleteChallenge(id: string): Promise<{ error?: string }> {
+  try {
+    await requireSuperAdmin();
+    const actor = await requireAdminActor();
+
+    const challenge = await db.challenge.findUnique({ where: { id } });
+    if (!challenge || challenge.id === GLOBAL_CHALLENGE_ID) throw new Error("Challenge not found");
+
+    await db.$transaction([
+      db.teamMember.deleteMany({ where: { team: { challengeId: id } } }),
+      db.team.deleteMany({ where: { challengeId: id } }),
+      db.teamRequest.deleteMany({ where: { challengeId: id } }),
+      db.userChallenge.deleteMany({ where: { challengeId: id } }),
+      db.action.deleteMany({ where: { challengeId: id } }),
+      db.challenge.delete({ where: { id } }),
+      db.activityLog.create({
+        data: {
+          userId: actor?.id,
+          action: "Challenge Deleted",
+          details: `${challenge.name} (${challenge.code}) permanently deleted by ${actor?.name ?? "SuperAdmin"}`,
+        },
+      }),
+    ]);
+  } catch (err) {
+    console.error(err);
+    return { error: err instanceof Error ? err.message : "Something went wrong" };
+  }
+
+  revalidatePath(CHALLENGES_PATH);
   return {};
 }

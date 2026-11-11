@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { Prisma, UserRole, UserStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
@@ -11,9 +12,10 @@ import {
   isCurrentUserAdmin,
   isCurrentUserSuperAdmin,
   isEnvSuperAdminEmail,
+  requireSuperAdmin,
 } from "@/lib/authz";
 
-const USERS_PATH = "/admin/admin/users";
+const USERS_PATH = "/admin/users";
 
 async function requireAdminActor() {
   const { userId } = await auth();
@@ -140,6 +142,8 @@ export async function getAdminUserDetail(userId: string) {
         orderBy: { createdAt: "asc" },
       },
       actions: {
+        // imageUrl holds inline base64 photos (MBs per row) and is never shown here
+        omit: { imageUrl: true },
         include: { challenge: { select: { id: true, name: true } } },
         orderBy: { date: "desc" },
       },
@@ -233,10 +237,26 @@ export async function updateUserStatus(userId: string, status: UserStatus): Prom
   return toResult(() => applyUserStatus(userId, status));
 }
 
+/**
+ * Permanently purges a user account: their Clerk login, logged actions (points),
+ * enrollments, team memberships, and team requests.
+ *
+ * @param userId Database id of the user to delete.
+ * @returns An empty object on success, or `{ error }` with a client-safe message.
+ *
+ * Intent: SuperAdmin-only. Regular admins deactivate instead, which keeps the account
+ * and every point it contributed to teams and challenges. Deletion removes those points,
+ * so team and challenge totals drop. Admin activity logs survive with userId set to null.
+ */
+export async function deleteUserPermanent(userId: string): Promise<MutationResult> {
+  return toResult(() => applyUserDeletion(userId));
+}
+
 async function applyUserRole(userId: string, role: UserRole) {
   const { userId: clerkId } = await auth();
   if (!clerkId) throw new Error("Unauthorized");
-  if (!(await isCurrentUserSuperAdmin())) throw new Error("Only SuperAdmins can change roles");
+  const isSuperAdmin = await isCurrentUserSuperAdmin();
+  if (!isSuperAdmin && !(await isCurrentUserAdmin())) throw new Error("Forbidden");
   if (!isUserRole(role)) throw new Error("Invalid role");
 
   const actor = await db.user.findUnique({ where: { clerkId } });
@@ -247,6 +267,10 @@ async function applyUserRole(userId: string, role: UserRole) {
     throw new Error("This user is a SuperAdmin via SUPERADMIN_EMAILS; change it there");
   }
   if (target.role === role) return;
+  // Regular admins may only grant Admin to General Users; demotions and SuperAdmin grants need a SuperAdmin
+  if (!isSuperAdmin && !(target.role === UserRole.GENERAL_USER && role === UserRole.ADMIN)) {
+    throw new Error("Forbidden: Admins can only promote General Users to Admin");
+  }
 
   // Clerk metadata controls console access, so update it first; a Clerk failure leaves the DB unchanged
   const clerkRole =
@@ -277,6 +301,19 @@ async function applyUserStatus(userId: string, status: UserStatus) {
   if (!target) throw new Error("User not found");
   if (actor && target.id === actor.id) throw new Error("You can't change your own status");
   if (target.status === status) return;
+  if (effectiveRole(target) === UserRole.SUPERADMIN && !(await isCurrentUserSuperAdmin())) {
+    throw new Error("Forbidden: only SuperAdmins can change a SuperAdmin's status");
+  }
+
+  // A Clerk ban blocks sign-in and ends active sessions everywhere (participant app, console, APIs).
+  // Done first so a Clerk failure leaves the DB unchanged; 404 means a seeded user with no Clerk login.
+  try {
+    const client = await clerkClient();
+    if (status === UserStatus.DEACTIVATED) await client.users.banUser(target.clerkId);
+    else await client.users.unbanUser(target.clerkId);
+  } catch (err) {
+    if (!(isClerkAPIResponseError(err) && err.status === 404)) throw err;
+  }
 
   await db.$transaction([
     db.user.update({ where: { id: userId }, data: { status } }),
@@ -291,4 +328,43 @@ async function applyUserStatus(userId: string, status: UserStatus) {
 
   revalidatePath(USERS_PATH);
   revalidatePath(`${USERS_PATH}/${userId}`);
+}
+
+async function applyUserDeletion(userId: string) {
+  const superAdmin = await requireSuperAdmin();
+  const actor = await db.user.findUnique({ where: { clerkId: superAdmin.id } });
+
+  const target = await db.user.findUnique({ where: { id: userId } });
+  if (!target) throw new Error("User not found");
+  if (target.clerkId === superAdmin.id) throw new Error("You can't delete your own account");
+  if (isEnvSuperAdminEmail(target.email)) {
+    throw new Error("This user is a SuperAdmin via SUPERADMIN_EMAILS; remove them there first");
+  }
+
+  // Delete the Clerk login first, otherwise the dashboard would recreate the DB row on next sign-in.
+  // A 404 means it is already gone (seeded users, or a retry after a failed DB step), so carry on.
+  try {
+    const client = await clerkClient();
+    await client.users.deleteUser(target.clerkId);
+  } catch (err) {
+    if (!(isClerkAPIResponseError(err) && err.status === 404)) throw err;
+  }
+
+  await db.$transaction([
+    db.action.deleteMany({ where: { userId } }),
+    db.teamMember.deleteMany({ where: { userId } }),
+    db.userChallenge.deleteMany({ where: { userId } }),
+    db.teamRequest.deleteMany({ where: { requestedById: userId } }),
+    db.teamRequest.updateMany({ where: { reviewedById: userId }, data: { reviewedById: null } }),
+    db.user.delete({ where: { id: userId } }),
+    db.activityLog.create({
+      data: {
+        userId: actor?.id,
+        action: "User Deleted",
+        details: `${target.name} (${target.email}) permanently deleted by ${actor?.name ?? "SuperAdmin"}`,
+      },
+    }),
+  ]);
+
+  revalidatePath(USERS_PATH);
 }

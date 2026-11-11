@@ -4,14 +4,15 @@ import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/authz";
 import { ActionCategory, ChallengeStatus, UserStatus } from "@prisma/client";
 
-import { CATEGORY_CONFIG } from "@/app/admin/admin/dashboard-display";
+import { CATEGORY_CONFIG } from "@/app/admin/dashboard-display";
 
 export type DashboardTelemetry = Awaited<ReturnType<typeof getAdminDashboardTelemetry>>;
 
 export async function getAdminDashboardTelemetry() {
   await requireAdmin();
 
-  // Execute parallel queries for atomic telemetry snapshot
+  // Independent reads run in parallel; a batched $transaction would send them one at a time
+  // (and under READ COMMITTED it gave no stronger snapshot anyway)
   const [
     activeChallengesCount,
     upcomingChallengesCount,
@@ -23,7 +24,7 @@ export async function getAdminDashboardTelemetry() {
     recentActions,
     topUserPoints,
     categoryGroupCounts,
-  ] = await db.$transaction([
+  ] = await Promise.all([
     db.challenge.count({ where: { status: ChallengeStatus.ACTIVE } }),
     db.challenge.count({ where: { status: ChallengeStatus.UPCOMING } }),
     db.action.count(),
@@ -38,6 +39,8 @@ export async function getAdminDashboardTelemetry() {
     db.action.findMany({
       take: 10,
       orderBy: { createdAt: "desc" },
+      // imageUrl holds inline base64 photos (MBs per row) and is never shown here
+      omit: { imageUrl: true },
       include: {
         user: {
           select: {

@@ -11,11 +11,11 @@
 import { revalidatePath } from "next/cache";
 import { ActionCategory, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/authz";
+import { requireAdmin, requireSuperAdmin } from "@/lib/authz";
 import { normalizeActionCategory } from "@/lib/categories";
 
-const CHALLENGES_PATH = "/admin/admin/challenges";
-const ACTIONS_PATH = "/admin/admin/actions";
+const CHALLENGES_PATH = "/admin/challenges";
+const ACTIONS_PATH = "/admin/actions";
 
 export interface GlobalActionItem {
   readonly id: string;
@@ -219,7 +219,7 @@ export async function updateGlobalAction(
 }
 
 /**
- * Deletes an action from the Global Action Catalog.
+ * Deletes an action from the Global Action Catalog. Permanent deletion is SuperAdmin-only.
  *
  * @param actionId - Action catalog record identifier
  * @returns Promise resolving to an operation status
@@ -227,9 +227,8 @@ export async function updateGlobalAction(
 export async function deleteGlobalAction(
   actionId: string,
 ): Promise<ActionOperationResult> {
-  await requireAdmin();
-
   try {
+    await requireSuperAdmin();
     await db.actionCatalog.delete({
       where: { id: actionId },
     });
@@ -632,7 +631,7 @@ export async function contributeActionToGlobalCatalog(
 
 /**
  * Removes the association between an action and a challenge without deleting
- * the action from the Global Action Catalog.
+ * the action from the Global Action Catalog. Permanent removal is SuperAdmin-only.
  *
  * @param challengeId - Target challenge identifier
  * @param actionCatalogId - Linked action catalog identifier
@@ -642,9 +641,8 @@ export async function removeActionFromChallenge(
   challengeId: string,
   actionCatalogId: string,
 ): Promise<ActionOperationResult> {
-  await requireAdmin();
-
   try {
+    await requireSuperAdmin();
     await db.challengeAction.delete({
       where: {
         challengeId_actionCatalogId: {

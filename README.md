@@ -101,7 +101,7 @@ middleware.ts                           # Clerk edge route protection
 
 All administrative capabilities from the legacy GreenStep admin console (`sp26_team2_greenstepchallenge_admin`) have been modernized and unified into this Next.js 15 App Router platform with Neon PostgreSQL, replacing legacy Supabase and Material UI dependencies.
 
-### 1. Master Telemetry Dashboard (`/admin/admin`)
+### 1. Master Telemetry Dashboard (`/admin`)
 - **Live Database Telemetry:** Replaced static mock values with live queries executed via parallel Prisma `db.$transaction` operations.
 - **Top KPI Cards:** Active Challenges count, Total Actions Logged, Active Participants count, and Total Points Earned with computed completion rates, average points per user, and estimated CO2 reductions.
 - **Top Contributors Leaderboard:** Displays top 5 participants sorted dynamically by aggregate points with medal rank badges and proportional progress tracks.
@@ -111,35 +111,35 @@ All administrative capabilities from the legacy GreenStep admin console (`sp26_t
 - **Quick Action Shortcut Tiles:** Instant navigation to launch challenges, invite users, add departments, or view analytics reports.
 
 ### 2. Challenge Management, In-Challenge Action CRUD & Cloning
-- **Challenges Directory (`/admin/admin/challenges`):** Full table listing with search, category tags, and status filter tabs (`Active`, `Upcoming`, `Completed`).
-- **Challenge Detail View (`/admin/admin/challenges/[id]`):** Deep-dive overview card, participant count, date range, challenge leaderboard, participant roster, and configured actions summary.
-- **In-Challenge Action Management (`/admin/admin/challenges/[id]/actions`):**
+- **Challenges Directory (`/admin/challenges`):** Full table listing with search, category tags, and status filter tabs (`Active`, `Upcoming`, `Completed`).
+- **Challenge Detail View (`/admin/challenges/[id]`):** Deep-dive overview card, participant count, date range, challenge leaderboard, participant roster, and configured actions summary.
+- **In-Challenge Action Management (`/admin/challenges/[id]/actions`):**
   - Admins can add custom sustainability actions specifically for a given challenge or import existing actions directly from the **Global Action Catalog**.
   - Interactive Add/Edit modal dialog with fields for Action Title, Category, Point reward value, and logging instructions.
   - Confirmation modal safeguards for deleting actions.
   - Category filter pills (`All`, `Transportation`, `Energy`, `Waste`, `Food`, `Water`) and action search.
   - Metrics displaying configured action count, total point pool, and primary domain.
 - **Challenge Cloning ("Clone from Past Challenge"):**
-  - In `/admin/admin/challenges/new`, admins can clone past or archived challenges with one click.
+  - In `/admin/challenges/new`, admins can clone past or archived challenges with one click.
   - Auto-populates challenge title, code, category, description, and automatically clones all associated action items.
 
-### 3. Challenge Templates Authoring & Management (`/admin/admin/templates`)
-- **Templates Directory (`/admin/admin/templates`):** Full management directory for reusable challenge sprint presets:
+### 3. Challenge Templates Authoring & Management (`/admin/templates`)
+- **Templates Directory (`/admin/templates`):** Full management directory for reusable challenge sprint presets:
   - *Sustainable Commute Week* (Transportation, 1 week, 4 actions, 130 pts)
   - *H2O Hero Week* (Water Conservation, 1 week, 4 actions, 80 pts)
   - *Power Down Challenge* (Energy Efficiency, 1 week, 4 actions, 70 pts)
   - *Zero Waste Week* (Waste & Recycling, 1 week, 4 actions, 80 pts)
   - *Sustainable Food Challenge* (Sustainable Food, 10 days, 4 actions, 85 pts)
 - **Full Template Authoring CRUD:**
-  - **Create Template (`/admin/admin/templates/new`):** Author custom templates with name, code prefix, category, recommended duration, description, brand theme colors, and bundled actions.
-  - **Edit Template (`/admin/admin/templates/[id]/edit`):** Update existing template parameters, change colors, or adjust bundled action sets.
+  - **Create Template (`/admin/templates/new`):** Author custom templates with name, code prefix, category, recommended duration, description, brand theme colors, and bundled actions.
+  - **Edit Template (`/admin/templates/[id]/edit`):** Update existing template parameters, change colors, or adjust bundled action sets.
   - **Delete Template:** Safe deletion with confirmation modal.
   - **Action Bundle Selector:** Browse all actions from the Global Action Catalog with category tabs and search, and select actions via checkboxes to bundle into the template.
   - **Inline Action Creation:** Create a new global action directly from within the template authoring form (`ActionFormDialog`).
-- **Quick Start Integration (`/admin/admin/challenges/new`):**
+- **Quick Start Integration (`/admin/challenges/new`):**
   - "From Template" dropdown pre-populates challenge parameters and automatically stages recommended actions.
 
-### 4. Global Action Catalog Management (`/admin/admin/actions`)
+### 4. Global Action Catalog Management (`/admin/actions`)
 - **Master Action Library:** Centralized repository of reusable sustainability actions derived from Minnesota GreenStep and MPCA standards.
 - **Catalog Metrics Bar:** Real-time stats displaying total catalog actions, categories covered, and average point weights.
 - **Search & Filtering:** Search by action title or description, filter by category pills (`Transportation`, `Water`, `Energy`, `Waste`, `Food`), and sort by points or title.
@@ -149,9 +149,9 @@ All administrative capabilities from the legacy GreenStep admin console (`sp26_t
   - **Delete Action Dialog:** Delete actions with confirmation.
 - **Seamless Cross-Module Reuse:** Global catalog actions can be bundled into challenge templates or imported directly into specific active challenges.
 
-### 5. User Directory & Role-Based Access Control (`/admin/admin/users`)
+### 5. User Directory & Role-Based Access Control (`/admin/users`)
 - **Directory Table:** Searchable table with debounced search input (300ms), role filter tabs (`All`, `SuperAdmin`, `Admin`, `General User`), status filter (`Active`, `Deactivated`), and department dropdown.
-- **User Detail Profile (`/admin/admin/users/[id]`):** Summary card, lifetime points, current streak, actions logged, join date, per-challenge points history with progress bars, chronological action history, and team memberships.
+- **User Detail Profile (`/admin/users/[id]`):** Summary card, lifetime points, current streak, actions logged, join date, per-challenge points history with progress bars, chronological action history, and team memberships.
 - **Two-Way Clerk Role Synchronization:**
   - Role modifications by SuperAdmins update Clerk `publicMetadata.role` first; on success, a Prisma transaction updates `User.role` and creates an audit entry in `ActivityLog`.
   - Self-demotion and self-deactivation protection prevents admins from locking themselves out.
@@ -160,13 +160,13 @@ All administrative capabilities from the legacy GreenStep admin console (`sp26_t
 - **Admin Activity Log:** Full audit trail tracking role and status mutations with actor attribution and timestamps.
 - **CSV Export:** Client-side CSV export of user participation history and admin audit logs.
 
-### 6. Group & Campus Department Management (`/admin/admin/groups`)
+### 6. Group & Campus Department Management (`/admin/groups`)
 - **Department Cards:** Displays campus departments with live member counts and linked challenge numbers.
-- **Department Detail (`/admin/admin/groups/[id]`):** View assigned participant rosters with links to individual profiles.
+- **Department Detail (`/admin/groups/[id]`):** View assigned participant rosters with links to individual profiles.
 - **Pending Team Request Reviews:** Table displaying pending team creation requests submitted by mobile and web participants with one-click "Approve" and "Reject" workflow that automatically provisions `Team` and `TeamMember` records upon approval.
-- **Create Department (`/admin/admin/groups/new`):** Add formal campus departments or organizational divisions.
+- **Create Department (`/admin/groups/new`):** Add formal campus departments or organizational divisions.
 
-### 7. Reports & Audit Analytics (`/admin/admin/reports`)
+### 7. Reports & Audit Analytics (`/admin/reports`)
 - **Interactive Analytics:** Filterable by challenge and date range.
 - **Category Engagement Chart:** Visual action volume breakdown rendered with Recharts.
 - **Full Participation Log Table:** Searchable table of action completions with clickable user and challenge links.
@@ -254,7 +254,7 @@ npm run db:seed
 npm run dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) for the participant app, or navigate to [http://localhost:3000/admin/admin](http://localhost:3000/admin/admin) to access the Administrative Management Console.
+Visit [http://localhost:3000](http://localhost:3000) for the participant app, or navigate to [http://localhost:3000/admin](http://localhost:3000/admin) to access the Administrative Management Console.
 
 ### 5. Sync Clerk Roles (Optional)
 

@@ -55,6 +55,8 @@ export async function GET(req: Request) {
     const actions = await db.action.findMany({
       where: filters,
       orderBy: { date: "desc" },
+      // imageUrl holds inline base64 photos (MBs per row) and is never exported
+      omit: { imageUrl: true },
       include: {
         user: {
           select: {

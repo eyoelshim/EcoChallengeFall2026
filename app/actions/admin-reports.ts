@@ -71,6 +71,8 @@ export async function getLiveData(filters: ReportFilterParams) {
       orderBy: {
         date: "desc",
       },
+      // imageUrl holds inline base64 photos (MBs per row) and is never exported
+      omit: { imageUrl: true },
       include: {
         user: {
           select: {

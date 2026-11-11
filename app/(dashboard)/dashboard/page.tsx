@@ -1,5 +1,6 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { isCurrentUserAdmin } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 import { ensureGlobalChallengeExists } from "@/lib/global-challenge";
@@ -92,7 +93,7 @@ export default async function DashboardPage() {
       firstName={user.firstName || "User"}
       teamMemberships={teamMemberships}
       initialStreak={dbUser.streak}
-      isAdmin={user.publicMetadata?.role === "admin"}
+      isAdmin={await isCurrentUserAdmin()}
     />
   );
 }

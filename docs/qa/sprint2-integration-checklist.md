@@ -12,13 +12,13 @@
 Verify the complete cross-app data lifecycle between:
 1. **Participant Application:** Action selection, dynamic points calculation (base points + note bonus + image bonus), challenge scoping, and streak tracking.
 2. **Neon PostgreSQL Database:** Persistence in `Action`, updates to `User` (`streak`, `lastActionDate`), and relation integrity with `UserChallenge` and `Challenge`.
-3. **Admin Console:** Real-time reflection across Dashboard (`/admin/admin`), Challenge Detail (`/admin/admin/challenges/[id]`), User Profile (`/admin/admin/users/[id]`), and Reports / CSV Export (`/admin/admin/reports`).
+3. **Admin Console:** Real-time reflection across Dashboard (`/admin`), Challenge Detail (`/admin/challenges/[id]`), User Profile (`/admin/users/[id]`), and Reports / CSV Export (`/admin/reports`).
 
 ```mermaid
 flowchart LR
     P["Participant (/log-action)"] -->|POST /api/actions| API["Next.js Route Handler"]
     API -->|Serializable Tx| DB[("Neon PostgreSQL (db.action, db.user)")]
-    DB -->|getAdminDashboardTelemetry| AD["Admin Dashboard (/admin/admin)"]
+    DB -->|getAdminDashboardTelemetry| AD["Admin Dashboard (/admin)"]
     DB -->|getAdminChallengeById| AC["Challenge Detail (/challenges/[id])"]
     DB -->|getUserById| AU["User Detail (/users/[id])"]
     DB -->|getLiveData + CSV| AR["Reports (/reports & /api/export/csv)"]
@@ -118,9 +118,9 @@ flowchart LR
 ---
 
 ### Test Case 4: Admin Console — Dashboard Telemetry Reflection
-* **Goal:** Verify live stats and Recent Activity table at `/admin/admin`.
+* **Goal:** Verify live stats and Recent Activity table at `/admin`.
 * **Steps:**
-  1. Navigate to `http://localhost:3000/admin/admin`.
+  1. Navigate to `http://localhost:3000/admin`.
   2. Check **Summary Metric Cards**:
      - **Total Actions Taken:** Incremented by 1.
      - **Total Points Earned:** Incremented by the logged action's points.
@@ -132,9 +132,9 @@ flowchart LR
 ---
 
 ### Test Case 5: Admin Console — Challenge Detail Reflection
-* **Goal:** Verify challenge-level aggregation at `/admin/admin/challenges/[id]`.
+* **Goal:** Verify challenge-level aggregation at `/admin/challenges/[id]`.
 * **Steps:**
-  1. Navigate to `http://localhost:3000/admin/admin/challenges`.
+  1. Navigate to `http://localhost:3000/admin/challenges`.
   2. Select the challenge: `2026 Spring Waste Reduction` (`cmvpyus9b0012o74gtth7kadr`).
 * **Expected Outcome:**
   - **Total Actions** counter reflects the new action.
@@ -144,9 +144,9 @@ flowchart LR
 ---
 
 ### Test Case 6: Admin Console — User Profile & Action Timeline
-* **Goal:** Verify user-level telemetry at `/admin/admin/users/[id]`.
+* **Goal:** Verify user-level telemetry at `/admin/users/[id]`.
 * **Steps:**
-  1. Navigate to `http://localhost:3000/admin/admin/users`.
+  1. Navigate to `http://localhost:3000/admin/users`.
   2. Click on the participant user profile.
 * **Expected Outcome:**
   - **Actions Logged:** Counter increments by 1.
@@ -157,9 +157,9 @@ flowchart LR
 ---
 
 ### Test Case 7: Admin Console — Reports & CSV Export
-* **Goal:** Verify reports aggregation and CSV export at `/admin/admin/reports`.
+* **Goal:** Verify reports aggregation and CSV export at `/admin/reports`.
 * **Steps:**
-  1. Navigate to `http://localhost:3000/admin/admin/reports`.
+  1. Navigate to `http://localhost:3000/admin/reports`.
   2. Verify the **Category Breakdown Chart** reflects the new action under `Recycling`.
   3. Filter by Challenge (`2026 Spring Waste Reduction`) and Category (`Recycling`).
   4. Click **Export CSV** (or download from `/api/export/csv?challengeId=cmvpyus9b0012o74gtth7kadr`).

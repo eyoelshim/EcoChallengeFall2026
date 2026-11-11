@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/authz";
+import { requireAdmin, requireSuperAdmin } from "@/lib/authz";
 
 export interface DepartmentListItem {
   id: string;
@@ -399,6 +399,91 @@ export async function createDepartment(input: CreateDepartmentInput) {
     });
   }
 
-  revalidatePath("/admin/admin/groups");
+  revalidatePath("/admin/groups");
   return department;
+}
+
+type MutationResult = { error?: string };
+
+// Next.js hides thrown error messages from the client in production, so deletions return them instead
+async function toResult(fn: () => Promise<void>): Promise<MutationResult> {
+  try {
+    await fn();
+    return {};
+  } catch (err) {
+    console.error(err);
+    return { error: err instanceof Error ? err.message : "Something went wrong" };
+  }
+}
+
+async function findActor() {
+  const { userId: clerkUserId } = await auth();
+  return clerkUserId ? db.user.findUnique({ where: { clerkId: clerkUserId } }) : null;
+}
+
+/**
+ * Permanently deletes a department (campus group).
+ *
+ * @param id Department id to delete.
+ * @returns An empty object on success, or `{ error }` with a client-safe message.
+ *
+ * Intent: SuperAdmin-only structural deletion. Members and challenges are detached
+ * (departmentId set to null) rather than deleted, so no user accounts or points are lost.
+ */
+export async function deleteDepartment(id: string): Promise<MutationResult> {
+  return toResult(async () => {
+    await requireSuperAdmin();
+    const actor = await findActor();
+
+    const department = await db.department.findUnique({ where: { id } });
+    if (!department) throw new Error("Department not found");
+
+    await db.$transaction([
+      db.user.updateMany({ where: { departmentId: id }, data: { departmentId: null } }),
+      db.challenge.updateMany({ where: { departmentId: id }, data: { departmentId: null } }),
+      db.department.delete({ where: { id } }),
+      db.activityLog.create({
+        data: {
+          userId: actor?.id,
+          action: "Department Deleted",
+          details: `Deleted department "${department.name}" by ${actor?.name ?? "SuperAdmin"}`,
+        },
+      }),
+    ]);
+
+    revalidatePath("/admin/groups");
+  });
+}
+
+/**
+ * Permanently deletes a challenge team.
+ *
+ * @param id Team id to delete.
+ * @returns An empty object on success, or `{ error }` with a client-safe message.
+ *
+ * Intent: SuperAdmin-only structural deletion. Only memberships are removed; points are
+ * logged per user, so members keep everything they earned in the challenge.
+ */
+export async function deleteTeam(id: string): Promise<MutationResult> {
+  return toResult(async () => {
+    await requireSuperAdmin();
+    const actor = await findActor();
+
+    const team = await db.team.findUnique({ where: { id } });
+    if (!team) throw new Error("Team not found");
+
+    await db.$transaction([
+      db.teamMember.deleteMany({ where: { teamId: id } }),
+      db.team.delete({ where: { id } }),
+      db.activityLog.create({
+        data: {
+          userId: actor?.id,
+          action: "Team Deleted",
+          details: `Deleted team "${team.name}" by ${actor?.name ?? "SuperAdmin"}`,
+        },
+      }),
+    ]);
+
+    if (team.challengeId) revalidatePath(`/admin/challenges/${team.challengeId}`);
+  });
 }
