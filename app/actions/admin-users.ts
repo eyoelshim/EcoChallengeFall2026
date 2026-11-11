@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { Prisma, UserRole, UserStatus } from "@prisma/client";
+import { Department, Prisma, UserRole, UserStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
   CLERK_ADMIN_ROLE,
@@ -232,6 +232,13 @@ export async function updateUserRole(userId: string, role: UserRole): Promise<Mu
 export async function updateUserStatus(userId: string, status: UserStatus): Promise<MutationResult> {
   return toResult(() => applyUserStatus(userId, status));
 }
+/*
+Change user's department. Fucntion takes userId and department as inputs, returns using
+the helper function of applyUserDepartment to actually change the department.
+*/
+export async function updateUserDepartment(userId: string, department: Department | null){
+  return toResult(() => applyUserDepartment(userId, department));
+}
 
 async function applyUserRole(userId: string, role: UserRole) {
   const { userId: clerkId } = await auth();
@@ -291,4 +298,47 @@ async function applyUserStatus(userId: string, status: UserStatus) {
 
   revalidatePath(USERS_PATH);
   revalidatePath(`${USERS_PATH}/${userId}`);
+}
+
+/*
+Helper function that does the actual change to the user's department. Function takes userId
+and department.
+*/
+async function applyUserDepartment(userId: string, department: Department | null){
+  const actor = await requireAdminActor();
+
+  //If invalid department, print "Invalid Department"
+  if (department === undefined) throw new Error("Invalid Department");
+
+  //Find the user being edited and retriecev their old department
+  const target = await db.user.findUnique({ 
+    where: { id: userId }, 
+    include: {department: true} 
+  });
+
+  // If the user is not found, throws an error
+  if (!target) throw new Error("User not found");
+  //If an admin tries to change their own department, throws an error.
+  //Should I keep this in? \/
+  if (actor && target.id === actor.id) throw new Error("You can't change your own department");
+  
+  const currentDepartmentId = target.departmentId ?? null;
+  const newDepartmentId = department?.id ?? null;
+  //If the department is what they are already, immediatly leave/return
+  if (currentDepartmentId === newDepartmentId) return;
+
+  // Otherwise is a valid department, so make the change
+  await db.$transaction([
+    db.user.update({ where: { id: userId }, 
+      data: { departmentId: department ? department.id : null,
+        departmentName: department ? department.name : null
+       } }),
+    db.activityLog.create({
+      data: {
+        userId,
+        action: "Department Changed",
+        details: `${target.department?.name ?? "NA"} → ${department ? department.name : null} by ${actor?.name ?? "Admin"}`,
+      },
+    }),
+  ]);
 }

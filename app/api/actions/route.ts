@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 import { ensureGlobalChallengeExists } from "@/lib/global-challenge";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, UserStatus } from "@prisma/client";
+import { getAdminUserDetail } from "@/app/actions/admin-users";
 
 const DUPLICATE_SUBMISSION_WINDOW_MS = 10_000;
 
@@ -80,6 +81,8 @@ export async function GET(req: Request) {
     const user = await db.user.findUnique({ where: { clerkId: userId } });
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
+    
+
     const actions = await db.action.findMany({
       where: { userId: user.id, ...challengeFilter, ...categoryFilter },
       orderBy: { createdAt: "desc" },
@@ -87,6 +90,7 @@ export async function GET(req: Request) {
         challenge: { select: { name: true } },
       },
     });
+    if (user.status == "DEACTIVATED")return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     return NextResponse.json(
       actions.map((action) => ({
@@ -214,7 +218,8 @@ export async function POST(req: Request) {
       where: { id: user.id },
       data: { streak: newStreak, lastActionDate: new Date() },
     });
-
+    
+    if (user.status == "DEACTIVATED")return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     return NextResponse.json({ ...action, streak: newStreak });
   } catch (error) {
     if (error instanceof Error && error.message === "DUPLICATE_ACTION_SUBMISSION") {
@@ -233,7 +238,6 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
-
     console.error(error);
     return NextResponse.json({ error: "Failed to create action" }, { status: 500 });
   }

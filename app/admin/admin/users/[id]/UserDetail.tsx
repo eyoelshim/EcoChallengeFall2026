@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useTransition, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -19,8 +19,9 @@ import {
   History,
   Users as GroupIcon,
 } from "lucide-react";
-import type { UserRole } from "@prisma/client";
-import { updateUserRole, updateUserStatus, type getAdminUserDetail } from "@/app/actions/admin-users";
+import type { UserRole, Department } from "@prisma/client";
+import { updateUserRole, updateUserStatus, updateUserDepartment, type getAdminUserDetail } from "@/app/actions/admin-users";
+import { getAdminDepartments, type DepartmentListItem} from "@/app/actions/admin-groups";
 import { downloadCsv } from "@/lib/csv";
 import {
   ROLE_OPTIONS,
@@ -31,7 +32,7 @@ import {
   CATEGORY_LABELS,
   formatDate,
   formatDateTime,
-  initials,
+  initials
 } from "../user-display";
 
 type AdminUserDetail = NonNullable<Awaited<ReturnType<typeof getAdminUserDetail>>>;
@@ -41,7 +42,9 @@ export default function UserDetail({ user, canChangeRole }: { user: AdminUserDet
   const [expandedParticipation, setExpandedParticipation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [roleSavedNotice, setRoleSavedNotice] = useState(false);
+  const [departmentSavedNotice, setDepartmentSavedNotice] = useState(false);
   const [isSaving, startSaving] = useTransition();
+  const [departmentsList, setDepartmentsList] = useState<DepartmentListItem[]>([]);
 
   const runMutation = (mutation: () => Promise<{ error?: string }>, onSuccess?: () => void) => {
     setError(null);
@@ -62,6 +65,16 @@ export default function UserDetail({ user, canChangeRole }: { user: AdminUserDet
       () => {
         setRoleSavedNotice(true);
         setTimeout(() => setRoleSavedNotice(false), 2000);
+      }
+    );
+  };
+
+  const handleDepartmentChange = (department: Department | null) => {
+    runMutation(
+      () => updateUserDepartment(user.id, department),
+      () => {
+        setDepartmentSavedNotice(true);
+        setTimeout(() => setDepartmentSavedNotice(false), 2000);
       }
     );
   };
@@ -100,6 +113,10 @@ export default function UserDetail({ user, canChangeRole }: { user: AdminUserDet
 
   const visibleParticipation = expandedParticipation ? user.actions : user.actions.slice(0, 5);
 
+  useEffect(() => {
+    getAdminDepartments().then((data) => setDepartmentsList(data));
+  }, []);
+  
   return (
     <div className="space-y-6">
       {/* Back button */}
@@ -178,9 +195,40 @@ export default function UserDetail({ user, canChangeRole }: { user: AdminUserDet
             <span className="block text-xs font-medium text-slate-400 uppercase tracking-wider">Email</span>
             <p className="text-sm font-medium text-slate-900 mt-0.5 break-all">{user.email}</p>
           </div>
+          {/* Department Changing Dropdown and Selection */}
           <div>
-            <span className="block text-xs font-medium text-slate-400 uppercase tracking-wider">Department</span>
-            <p className="text-sm font-medium text-slate-900 mt-0.5">{user.department ?? "—"}</p>
+            <div className="flex items-center justify-between">
+              <span className="block text-xs font-medium text-slate-400 uppercase tracking-wider">Department</span>
+              {departmentSavedNotice && <span className="text-[11px] font-medium text-emerald-600">Saved!</span>}
+            </div>
+            <select
+              value={user.department ?? ""}
+              onChange={(e) => { 
+                if (e.target.value === "") {
+                  handleDepartmentChange(null);
+                  return;
+                }
+                const theDepartment = departmentsList.find((d) => d.name === e.target.value);
+                if (theDepartment) {
+                  handleDepartmentChange({
+                    id: theDepartment.id,
+                    name: theDepartment.name,
+                    createdAt: theDepartment.createdAt,
+                    description: theDepartment.description || null,
+                  });
+                }
+              }}
+              disabled={isSaving}
+              aria-label="Change department"
+              className="mt-1 w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-60"
+            >
+              <option value="">None</option>
+              {departmentsList.map((department) => (
+                <option key={department.id} value={department.name}>
+                  {[department.name]}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <div className="flex items-center justify-between">
