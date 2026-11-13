@@ -2,7 +2,12 @@
 
 import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { getUserChallenges, joinChallenge } from "@/app/actions/challenge";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 import {
@@ -16,6 +21,7 @@ import {
   Zap,
   Crown,
   X,
+  Loader2,
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -220,6 +226,9 @@ export default function DashboardClient({
   // localMemberships tracks joins made this session (augments the server-passed list)
   const [localMemberships, setLocalMemberships] = useState(teamMemberships);
   const [loading, setLoading] = useState(false);
+  const [isChallengeDataLoading, setIsChallengeDataLoading] =
+    useState<boolean>(false);
+  const challengeFetchIdRef = useRef<number>(0);
   const [teamError, setTeamError] = useState("");
   const [requestName, setRequestName] = useState("");
   const [requestMessage, setRequestMessage] = useState("");
@@ -384,27 +393,44 @@ export default function DashboardClient({
     }
   }
 
-  async function loadTeams(cId = activeChallengeId) {
+  /**
+   * Fetches teams for the specified challenge.
+   */
+  async function loadTeams(cId = activeChallengeId): Promise<Team[]> {
     if (!cId) {
       setTeams([]);
-      return;
+      return [];
     }
     const res = await fetch(`/api/team/list?challengeId=${cId}`);
     const data = await res.json();
-    setTeams(Array.isArray(data) ? data : []);
+    const result = Array.isArray(data) ? data : [];
+    setTeams(result);
+    return result;
   }
 
-  async function loadTeamRequests(cId = activeChallengeId) {
+  /**
+   * Fetches pending team join requests for the specified challenge.
+   */
+  async function loadTeamRequests(
+    cId = activeChallengeId,
+  ): Promise<TeamRequestItem[]> {
     if (!cId || cId === GLOBAL_CHALLENGE_ID) {
       setTeamRequests([]);
-      return;
+      return [];
     }
     const res = await fetch(`/api/team/request?challengeId=${cId}`);
     const data = await res.json();
-    setTeamRequests(Array.isArray(data) ? data : []);
+    const result = Array.isArray(data) ? data : [];
+    setTeamRequests(result);
+    return result;
   }
 
-  async function loadLeaderboard(cId = activeChallengeId) {
+  /**
+   * Fetches team leaderboard rankings for the specified challenge.
+   */
+  async function loadLeaderboard(
+    cId = activeChallengeId,
+  ): Promise<LeaderboardTeam[]> {
     const params = new URLSearchParams();
     if (cId && cId !== GLOBAL_CHALLENGE_ID && !cId.startsWith("CATEGORY_")) {
       params.set("challengeId", cId);
@@ -416,17 +442,26 @@ export default function DashboardClient({
     const url = `/api/leaderboard${query ? `?${query}` : ""}`;
     const res = await fetch(url);
     const data = await res.json();
-    setLeaderboard(Array.isArray(data) ? data : []);
+    const result = Array.isArray(data) ? data : [];
+    setLeaderboard(result);
+    return result;
   }
 
+  /**
+   * Fetches user's personal activity feed scoped to the challenge.
+   */
   const fetchMyActivity = useCallback(
-    async (category = activeCategory) => {
+    async (
+      cId: string | undefined = activeChallengeId,
+      category: CategoryType = activeCategory,
+    ): Promise<ActionItem[]> => {
       const params = new URLSearchParams();
       if (
-        activeChallengeId !== GLOBAL_CHALLENGE_ID &&
-        !activeChallengeId.startsWith("CATEGORY_")
+        cId &&
+        cId !== GLOBAL_CHALLENGE_ID &&
+        !cId.startsWith("CATEGORY_")
       ) {
-        params.set("challengeId", activeChallengeId);
+        params.set("challengeId", cId);
       }
       if (category !== "ALL") {
         params.set("category", category);
@@ -437,33 +472,51 @@ export default function DashboardClient({
       if (Array.isArray(data)) {
         setMyActivity(data);
         setActions(data);
+        return data;
       }
+      return [];
     },
     [activeCategory, activeChallengeId],
   );
 
+  /**
+   * Fetches community-wide action feed scoped to the challenge.
+   */
   const fetchGlobalFeed = useCallback(
-    async (category = activeCategory) => {
+    async (
+      cId: string | undefined = activeChallengeId,
+      category: CategoryType = activeCategory,
+    ): Promise<GlobalActionItem[]> => {
       const params = new URLSearchParams();
       params.set("filter", "global");
       params.set("limit", "20");
       if (
-        activeChallengeId !== GLOBAL_CHALLENGE_ID &&
-        !activeChallengeId.startsWith("CATEGORY_")
+        cId &&
+        cId !== GLOBAL_CHALLENGE_ID &&
+        !cId.startsWith("CATEGORY_")
       ) {
-        params.set("challengeId", activeChallengeId);
+        params.set("challengeId", cId);
       }
       if (category !== "ALL") {
         params.set("category", category);
       }
       const res = await fetch(`/api/actions?${params.toString()}`);
       const data = await res.json();
-      if (Array.isArray(data)) setGlobalFeed(data);
+      if (Array.isArray(data)) {
+        setGlobalFeed(data);
+        return data;
+      }
+      return [];
     },
     [activeCategory, activeChallengeId],
   );
 
-  async function fetchIndividualLeaderboard(cId = activeChallengeId) {
+  /**
+   * Fetches individual champions leaderboard for the specified challenge.
+   */
+  async function fetchIndividualLeaderboard(
+    cId = activeChallengeId,
+  ): Promise<IndividualRankItem[]> {
     const params = new URLSearchParams();
     params.set("type", "champs");
     if (cId && cId !== GLOBAL_CHALLENGE_ID && !cId.startsWith("CATEGORY_")) {
@@ -474,10 +527,18 @@ export default function DashboardClient({
     }
     const res = await fetch(`/api/leaderboard?${params.toString()}`);
     const data = await res.json();
-    if (Array.isArray(data)) setIndividualLeaderboard(data);
+    const result = Array.isArray(data) ? data : [];
+    setIndividualLeaderboard(result);
+    return result;
   }
 
-  async function fetchStats(range: ChartRange, cId = activeChallengeId) {
+  /**
+   * Fetches weekly/monthly activity chart statistics.
+   */
+  async function fetchStats(
+    range: ChartRange,
+    cId = activeChallengeId,
+  ): Promise<StatPoint[]> {
     const params = new URLSearchParams();
     params.set("range", range);
     if (cId && cId !== GLOBAL_CHALLENGE_ID && !cId.startsWith("CATEGORY_")) {
@@ -488,10 +549,17 @@ export default function DashboardClient({
     }
     const res = await fetch(`/api/stats?${params.toString()}`);
     const data = await res.json();
-    if (Array.isArray(data)) setStatsData(data);
+    const result = Array.isArray(data) ? data : [];
+    setStatsData(result);
+    return result;
   }
 
-  async function fetchUserMeta(cId = activeChallengeId) {
+  /**
+   * Fetches user metadata (streak, points, action count) for challenge.
+   */
+  async function fetchUserMeta(
+    cId = activeChallengeId,
+  ): Promise<void> {
     const params = new URLSearchParams();
     if (cId && cId !== GLOBAL_CHALLENGE_ID && !cId.startsWith("CATEGORY_")) {
       params.set("challengeId", cId);
@@ -503,10 +571,12 @@ export default function DashboardClient({
     const res = await fetch(`/api/me${query ? `?${query}` : ""}`);
     const data = await res.json();
     if (typeof data.streak === "number") setStreak(data.streak);
-    if (typeof data.globalPoints === "number")
+    if (typeof data.globalPoints === "number") {
       setGlobalPoints(data.globalPoints);
-    if (typeof data.globalActionCount === "number")
+    }
+    if (typeof data.globalActionCount === "number") {
       setGlobalActionCount(data.globalActionCount);
+    }
   }
 
   async function handleJoinTeam(id: string) {
@@ -618,23 +688,35 @@ export default function DashboardClient({
     const effectiveChallengeId = categoryView ? undefined : cId;
     const global = cId === GLOBAL_CHALLENGE_ID;
 
+    const currentFetchId = ++challengeFetchIdRef.current;
+    setIsChallengeDataLoading(true);
+
+    const promises: Promise<unknown>[] = [
+      loadLeaderboard(effectiveChallengeId),
+      fetchIndividualLeaderboard(effectiveChallengeId),
+      fetchMyActivity(effectiveChallengeId),
+      fetchGlobalFeed(effectiveChallengeId),
+      fetchStats("week", effectiveChallengeId),
+      fetchUserMeta(effectiveChallengeId),
+    ];
+
     if (!global && !categoryView && effectiveChallengeId) {
-      loadTeams(effectiveChallengeId);
-      loadTeamRequests(effectiveChallengeId);
+      promises.push(loadTeams(effectiveChallengeId));
+      promises.push(loadTeamRequests(effectiveChallengeId));
     }
-    loadLeaderboard(effectiveChallengeId);
-    fetchIndividualLeaderboard(effectiveChallengeId);
-    fetchMyActivity();
-    fetchGlobalFeed();
-    fetchStats("week", effectiveChallengeId);
-    fetchUserMeta(effectiveChallengeId);
-    // Reset leaderboard view when switching to global view
+
     if (global) setLeaderboardView("individual");
+
+    Promise.allSettled(promises).finally(() => {
+      if (currentFetchId === challengeFetchIdRef.current) {
+        setIsChallengeDataLoading(false);
+      }
+    });
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        fetchMyActivity();
-        fetchGlobalFeed();
+        fetchMyActivity(effectiveChallengeId);
+        fetchGlobalFeed(effectiveChallengeId);
         loadLeaderboard(effectiveChallengeId);
         if (!global && !categoryView && effectiveChallengeId) {
           loadTeamRequests(effectiveChallengeId);
@@ -662,7 +744,7 @@ export default function DashboardClient({
   const levelPoints = isGlobalView ? globalPoints : challengePoints;
   const levelScopeLabel = isGlobalView ? "Lifetime Level" : "Challenge Level";
   const levelPointLabel = isGlobalView
-    ? "total pts"
+    ? "pts"
     : `pts in ${activeChallengeName}`;
 
   // Level follows the selected scope; badges still use lifetime stats.
@@ -744,23 +826,28 @@ export default function DashboardClient({
         </nav>
 
         <div className="flex items-center gap-2 lg:gap-4 shrink-0">
-          <select
-            value={activeChallengeId}
-            onChange={handleChallengeChange}
-            className="text-[13px] bg-white border border-[#ececea] rounded-full py-1.5 px-3 outline-none text-[#111827] cursor-pointer hover:border-[#0b5d1e] transition-colors max-w-[200px] truncate"
-          >
-            <option value={GLOBAL_CHALLENGE_ID}>{allActivityLabel}</option>
-            {challenges.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-            <option value="CATEGORY_TRANSPORT">Transportation Challenge</option>
-            <option value="CATEGORY_WATER">Water Challenge</option>
-            <option value="CATEGORY_ENERGY">Energy Challenge</option>
-            <option value="CATEGORY_RECYCLING">Recycling Challenge</option>
-            <option value="CATEGORY_FOOD">Food Challenge</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={activeChallengeId}
+              onChange={handleChallengeChange}
+              className="text-[13px] bg-white border border-[#ececea] rounded-full py-1.5 px-3 outline-none text-[#111827] cursor-pointer hover:border-[#0b5d1e] transition-colors max-w-[200px] truncate"
+            >
+              <option value={GLOBAL_CHALLENGE_ID}>{allActivityLabel}</option>
+              {challenges.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+              <option value="CATEGORY_TRANSPORT">Transportation Challenge</option>
+              <option value="CATEGORY_WATER">Water Challenge</option>
+              <option value="CATEGORY_ENERGY">Energy Challenge</option>
+              <option value="CATEGORY_RECYCLING">Recycling Challenge</option>
+              <option value="CATEGORY_FOOD">Food Challenge</option>
+            </select>
+            {isChallengeDataLoading && (
+              <Loader2 className="h-4 w-4 animate-spin text-[#0b5d1e]" />
+            )}
+          </div>
           {!isGlobalView && (
             <button
               onClick={() => setShowLeaveChallengeModal(true)}
@@ -816,23 +903,30 @@ export default function DashboardClient({
         </div>
 
         <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-          <select
-            value={activeChallengeId}
-            onChange={handleChallengeChange}
-            className="min-h-11 w-full rounded-[14px] border border-[#ececea] bg-gray-100 px-3 text-[12px] font-semibold text-[#111827] outline-none"
-          >
-            <option value={GLOBAL_CHALLENGE_ID}>{allActivityLabel}</option>
-            {challenges.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-            <option value="CATEGORY_TRANSPORT">Transportation Challenge</option>
-            <option value="CATEGORY_WATER">Water Challenge</option>
-            <option value="CATEGORY_ENERGY">Energy Challenge</option>
-            <option value="CATEGORY_RECYCLING">Recycling Challenge</option>
-            <option value="CATEGORY_FOOD">Food Challenge</option>
-          </select>
+          <div className="relative flex items-center">
+            <select
+              value={activeChallengeId}
+              onChange={handleChallengeChange}
+              className="min-h-11 w-full rounded-[14px] border border-[#ececea] bg-gray-100 px-3 pr-8 text-[12px] font-semibold text-[#111827] outline-none"
+            >
+              <option value={GLOBAL_CHALLENGE_ID}>{allActivityLabel}</option>
+              {challenges.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+              <option value="CATEGORY_TRANSPORT">Transportation Challenge</option>
+              <option value="CATEGORY_WATER">Water Challenge</option>
+              <option value="CATEGORY_ENERGY">Energy Challenge</option>
+              <option value="CATEGORY_RECYCLING">Recycling Challenge</option>
+              <option value="CATEGORY_FOOD">Food Challenge</option>
+            </select>
+            {isChallengeDataLoading && (
+              <span className="absolute right-3 pointer-events-none">
+                <Loader2 className="h-4 w-4 animate-spin text-[#0b5d1e]" />
+              </span>
+            )}
+          </div>
           {!isGlobalView && (
             <button
               onClick={() => setShowLeaveChallengeModal(true)}
@@ -1168,47 +1262,76 @@ export default function DashboardClient({
                     </h2>
                   </div>
                   <div className="flex h-14 w-14 lg:h-16 lg:w-16 items-center justify-center rounded-full bg-white/20 backdrop-blur-md text-[20px] lg:text-[24px] font-bold">
-                    {levelInfo.level}
+                    {isChallengeDataLoading ? (
+                      <Loader2 className="h-6 w-6 animate-spin text-white" />
+                    ) : (
+                      levelInfo.level
+                    )}
                   </div>
                 </div>
 
                 <div className="relative z-10 mt-6">
                   <div className="h-3 w-full overflow-hidden rounded-full bg-black/20 backdrop-blur-sm">
                     <div
-                      className="h-full rounded-full bg-white transition-all duration-1000 ease-out"
-                      style={{ width: `${progressPercent}%` }}
+                      className={`h-full rounded-full bg-white transition-all duration-700 ease-out ${
+                        isChallengeDataLoading ? "opacity-40 animate-pulse" : ""
+                      }`}
+                      style={{
+                        width: isChallengeDataLoading
+                          ? "100%"
+                          : `${progressPercent}%`,
+                      }}
                     />
                   </div>
-                  <p className="mt-3 text-[13px] font-medium text-green-100">
-                    {levelInfo.isMaxLevel
-                      ? `${animatedLevelCurrent.toLocaleString()} ${levelPointLabel} — highest level reached`
-                      : `${animatedLevelCurrent.toLocaleString()} / ${levelInfo.goal?.toLocaleString()} ${levelPointLabel} toward Level ${levelInfo.level + 1}`}
+                  <p className="mt-3 text-[13px] font-medium text-green-100 flex items-center gap-2">
+                    {isChallengeDataLoading ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Updating challenge progress...</span>
+                      </>
+                    ) : levelInfo.isMaxLevel ? (
+                      `${animatedLevelCurrent.toLocaleString()} ${levelPointLabel} — highest level reached`
+                    ) : (
+                      `${animatedLevelCurrent.toLocaleString()} / ${levelInfo.goal?.toLocaleString()} ${levelPointLabel} toward Level ${levelInfo.level + 1}`
+                    )}
                   </p>
                 </div>
               </div>
 
               {/* QUICK STATS CARDS */}
               <div className="grid grid-cols-3 gap-3 lg:gap-4">
-                <div className="flex flex-col items-center justify-center rounded-[24px] bg-white border border-[#ececea] p-4 lg:p-5 shadow-sm">
-                  <p className="text-[24px] lg:text-[32px] font-black text-[#111827]">
-                    {animatedChallengePoints}
-                  </p>
+                <div className="flex flex-col items-center justify-center rounded-[24px] bg-white border border-[#ececea] p-4 lg:p-5 shadow-sm min-h-[92px] lg:min-h-[108px]">
+                  {isChallengeDataLoading ? (
+                    <div className="h-8 lg:h-10 w-16 bg-[#ececea] rounded-lg animate-pulse my-1" />
+                  ) : (
+                    <p className="text-[24px] lg:text-[32px] font-black text-[#111827]">
+                      {animatedChallengePoints}
+                    </p>
+                  )}
                   <p className="text-[11px] lg:text-[13px] font-semibold text-[#6b7280]">
                     Points
                   </p>
                 </div>
-                <div className="flex flex-col items-center justify-center rounded-[24px] bg-white border border-[#ececea] p-4 lg:p-5 shadow-sm">
-                  <p className="text-[24px] lg:text-[32px] font-black text-[#111827]">
-                    {scopedUserActions.length}
-                  </p>
+                <div className="flex flex-col items-center justify-center rounded-[24px] bg-white border border-[#ececea] p-4 lg:p-5 shadow-sm min-h-[92px] lg:min-h-[108px]">
+                  {isChallengeDataLoading ? (
+                    <div className="h-8 lg:h-10 w-12 bg-[#ececea] rounded-lg animate-pulse my-1" />
+                  ) : (
+                    <p className="text-[24px] lg:text-[32px] font-black text-[#111827]">
+                      {scopedUserActions.length}
+                    </p>
+                  )}
                   <p className="text-[11px] lg:text-[13px] font-semibold text-[#6b7280]">
                     Actions
                   </p>
                 </div>
-                <div className="flex flex-col items-center justify-center rounded-[24px] bg-white border border-[#ececea] p-4 lg:p-5 shadow-sm">
-                  <p className="text-[24px] lg:text-[32px] font-black text-[#111827]">
-                    {displayRank}
-                  </p>
+                <div className="flex flex-col items-center justify-center rounded-[24px] bg-white border border-[#ececea] p-4 lg:p-5 shadow-sm min-h-[92px] lg:min-h-[108px]">
+                  {isChallengeDataLoading ? (
+                    <div className="h-8 lg:h-10 w-12 bg-[#ececea] rounded-lg animate-pulse my-1" />
+                  ) : (
+                    <p className="text-[24px] lg:text-[32px] font-black text-[#111827]">
+                      {displayRank}
+                    </p>
+                  )}
                   <p className="text-[11px] lg:text-[13px] font-semibold text-[#6b7280]">
                     {isGlobalView ? "Rank" : "Team Rank"}
                   </p>
@@ -1401,7 +1524,16 @@ export default function DashboardClient({
                     </button>
                   )}
                 </div>
-                {myActivity.length === 0 ? (
+                {isChallengeDataLoading ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((idx) => (
+                      <div
+                        key={idx}
+                        className="h-[60px] rounded-[18px] bg-[#f8f8f7] border border-[#ececea] animate-pulse"
+                      />
+                    ))}
+                  </div>
+                ) : myActivity.length === 0 ? (
                   <div className="flex h-[180px] flex-col items-center justify-center rounded-[24px] border border-dashed border-[#d1d5db] bg-[#f9fafb] p-6 text-center">
                     <Leaf className="mb-2 h-8 w-8 text-[#9ca3af]" />
                     <p className="text-[14px] font-medium text-[#6b7280]">
@@ -1459,7 +1591,16 @@ export default function DashboardClient({
                   </button>
                 )}
               </div>
-              {globalFeed.length === 0 ? (
+              {isChallengeDataLoading ? (
+                <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+                  {[1, 2, 3, 4, 5, 6].map((idx) => (
+                    <div
+                      key={idx}
+                      className="h-[52px] rounded-[18px] bg-[#f8f8f7] border border-[#ececea] animate-pulse"
+                    />
+                  ))}
+                </div>
+              ) : globalFeed.length === 0 ? (
                 <p className="text-[13px] text-[#9ca3af] font-medium">
                   No one has logged actions yet.
                 </p>
@@ -1531,7 +1672,16 @@ export default function DashboardClient({
                 <h3 className="text-[20px] font-bold text-[#111827] mb-6">
                   Team Rankings
                 </h3>
-                {leaderboard.length === 0 ? (
+                {isChallengeDataLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((idx) => (
+                      <div
+                        key={idx}
+                        className="h-16 rounded-[20px] bg-[#f8f8f7] border border-[#ececea] animate-pulse"
+                      />
+                    ))}
+                  </div>
+                ) : leaderboard.length === 0 ? (
                   <p className="text-[14px] text-[#6b7280]">
                     No teams in this challenge yet.
                   </p>
@@ -1605,7 +1755,16 @@ export default function DashboardClient({
                 <h3 className="text-[20px] font-bold text-[#111827] mb-6">
                   Individual Rankings
                 </h3>
-                {individualLeaderboard.length === 0 ? (
+                {isChallengeDataLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((idx) => (
+                      <div
+                        key={idx}
+                        className="h-16 rounded-[20px] bg-[#f8f8f7] border border-[#ececea] animate-pulse"
+                      />
+                    ))}
+                  </div>
+                ) : individualLeaderboard.length === 0 ? (
                   <p className="text-[14px] text-[#6b7280]">
                     No individual data yet.
                   </p>
@@ -1694,7 +1853,14 @@ export default function DashboardClient({
                 ))}
               </div>
 
-              {statsData.length > 0 ? (
+              {isChallengeDataLoading ? (
+                <div className="flex h-[300px] w-full flex-col items-center justify-center rounded-[24px] bg-[#f9fafb] border border-dashed border-[#ececea]">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#0b5d1e] mb-2" />
+                  <p className="text-[13px] font-medium text-[#6b7280]">
+                    Updating activity chart...
+                  </p>
+                </div>
+              ) : statsData.length > 0 ? (
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
