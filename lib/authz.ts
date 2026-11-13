@@ -1,5 +1,8 @@
 import { cache } from "react";
-import { currentUser as fetchCurrentUser, type User } from "@clerk/nextjs/server";
+import {
+  currentUser as fetchCurrentUser,
+  type User,
+} from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 // Clerk's currentUser() makes a network call every time; a layout and its page together
@@ -27,7 +30,14 @@ function userEmails(user: User) {
   return user.emailAddresses.map((e) => e.emailAddress);
 }
 
-function isSuperAdminUser(user: User | null) {
+/**
+ * Evaluates whether a given Clerk user possesses SuperAdmin privileges via
+ * metadata role or matching email address in SUPERADMIN_EMAILS.
+ *
+ * @param user - Clerk User instance or null.
+ * @returns Boolean indicating SuperAdmin eligibility.
+ */
+export function isSuperAdminUser(user: User | null): boolean {
   if (!user) return false;
   return (
     user.publicMetadata?.role === CLERK_SUPERADMIN_ROLE ||
@@ -35,9 +45,18 @@ function isSuperAdminUser(user: User | null) {
   );
 }
 
-function isAdminUser(user: User | null) {
+/**
+ * Evaluates whether a given Clerk user possesses Admin privileges via
+ * metadata role or inherited SuperAdmin privileges.
+ *
+ * @param user - Clerk User instance or null.
+ * @returns Boolean indicating Admin eligibility.
+ */
+export function isAdminUser(user: User | null): boolean {
   if (!user) return false;
-  return user.publicMetadata?.role === CLERK_ADMIN_ROLE || isSuperAdminUser(user);
+  return (
+    user.publicMetadata?.role === CLERK_ADMIN_ROLE || isSuperAdminUser(user)
+  );
 }
 
 export async function isCurrentUserAdmin() {
@@ -68,6 +87,9 @@ export async function requireAdmin() {
 export async function requireSuperAdmin(): Promise<User> {
   const user = await currentUser();
   if (!user) throw new Error("Unauthorized");
-  if (!isSuperAdminUser(user)) throw new Error("Forbidden: only SuperAdmins can permanently delete records");
+  if (!isSuperAdminUser(user))
+    throw new Error(
+      "Forbidden: only SuperAdmins can permanently delete records",
+    );
   return user;
 }

@@ -1,22 +1,45 @@
+/**
+ * @file app/api/leaderboard/route.ts
+ * @description API endpoint for querying challenge and global leaderboards.
+ * Supports individual categories (streak, diverse, rising, champs) as well as
+ * aggregated team standings with explicit column projections.
+ */
+
 import { db } from "@/lib/db";
 import { GLOBAL_CHALLENGE_ID } from "@/lib/constants";
 import { NextResponse } from "next/server";
+import { ActionCategory } from "@prisma/client";
 
-type RankableItem = {
+interface RankableItem {
   name: string;
   value: number;
-};
+}
 
-type RankableTeam = {
+interface RankableTeam {
   name: string;
   totalPoints: number;
-};
+}
 
-function compareNames(a: string, b: string) {
+/**
+ * Standard case-insensitive string collation comparison.
+ *
+ * @param a - First string.
+ * @param b - Second string.
+ * @returns Sort comparison integer.
+ */
+function compareNames(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: "base" });
 }
 
-function addDenseRanks<T extends RankableItem>(items: T[]) {
+/**
+ * Calculates dense rankings for individual leaderboard items.
+ *
+ * @param items - List of items with numerical values.
+ * @returns Items annotated with 1-based dense rank.
+ */
+function addDenseRanks<T extends RankableItem>(
+  items: T[],
+): (T & { rank: number })[] {
   let previousValue: number | null = null;
   let currentRank = 0;
 
@@ -30,7 +53,15 @@ function addDenseRanks<T extends RankableItem>(items: T[]) {
   });
 }
 
-function addDenseRanksToTeams<T extends RankableTeam>(items: T[]) {
+/**
+ * Calculates dense rankings for team leaderboard entries.
+ *
+ * @param items - List of team objects with totalPoints.
+ * @returns Teams annotated with 1-based dense rank.
+ */
+function addDenseRanksToTeams<T extends RankableTeam>(
+  items: T[],
+): (T & { rank: number })[] {
   let previousValue: number | null = null;
   let currentRank = 0;
 
@@ -44,14 +75,27 @@ function addDenseRanksToTeams<T extends RankableTeam>(items: T[]) {
   });
 }
 
-export async function GET(req: Request) {
+/**
+ * Handles GET requests to retrieve leaderboard rankings.
+ *
+ * @param req - Incoming HTTP Request with optional query parameters.
+ * @returns JSON response containing ranked entities.
+ */
+export async function GET(req: Request): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(req.url);
-    const type = searchParams.get("type"); // streak | diverse | rising | champs | null (team overall)
+    const type = searchParams.get("type");
     const challengeId = searchParams.get("challengeId") ?? undefined;
     const category = searchParams.get("category") ?? undefined;
+    const categoryFilter = category
+      ? { category: category as ActionCategory }
+      : {};
 
-    // Get user IDs who are in this challenge (for individual leaderboards)
+    /**
+     * Resolves user IDs enrolled in the target challenge.
+     *
+     * @returns Array of user ID strings.
+     */
     async function getChallengeUserIds(): Promise<string[]> {
       if (!challengeId) return [];
       const members = await db.userChallenge.findMany({
@@ -96,11 +140,12 @@ export async function GET(req: Request) {
       const userIds = await getChallengeUserIds();
       const users = await db.user.findMany({
         where: userIds.length > 0 ? { id: { in: userIds } } : {},
-        include: {
+        select: {
+          name: true,
           actions: {
             where: {
               ...(challengeId ? { challengeId } : {}),
-              ...(category ? { category: category as "TRANSPORT" | "WATER" | "ENERGY" | "RECYCLING" | "FOOD" } : {}),
+              ...categoryFilter,
             },
             select: { category: true },
           },
@@ -129,10 +174,12 @@ export async function GET(req: Request) {
         where: {
           createdAt: { gte: since },
           ...(challengeId ? { challengeId } : {}),
-          ...(category ? { category: category as "TRANSPORT" | "WATER" | "ENERGY" | "RECYCLING" | "FOOD" } : {}),
+          ...categoryFilter,
           ...(userIds.length > 0 ? { userId: { in: userIds } } : {}),
         },
-        include: {
+        select: {
+          userId: true,
+          points: true,
           user: {
             select: {
               name: true,
@@ -141,7 +188,10 @@ export async function GET(req: Request) {
           },
         },
       });
-      const byUser: Record<string, { name: string; teamName: string | null; points: number }> = {};
+      const byUser: Record<
+        string,
+        { name: string; teamName: string | null; points: number }
+      > = {};
       for (const a of actions) {
         if (!a.user) continue;
         if (!byUser[a.userId]) {
@@ -173,11 +223,12 @@ export async function GET(req: Request) {
       const userIds = await getChallengeUserIds();
       const users = await db.user.findMany({
         where: userIds.length > 0 ? { id: { in: userIds } } : {},
-        include: {
+        select: {
+          name: true,
           actions: {
             where: {
               ...(challengeId ? { challengeId } : {}),
-              ...(category ? { category: category as "TRANSPORT" | "WATER" | "ENERGY" | "RECYCLING" | "FOOD" } : {}),
+              ...categoryFilter,
             },
             select: { points: true },
           },
@@ -199,15 +250,17 @@ export async function GET(req: Request) {
     // ── Default: team leaderboard scoped to challenge ─────────────────────
     const teams = await db.team.findMany({
       where: challengeId ? { challengeId } : {},
-      include: {
+      select: {
+        id: true,
+        name: true,
         members: {
-          include: {
+          select: {
             user: {
-              include: {
+              select: {
                 actions: {
                   where: {
                     ...(challengeId ? { challengeId } : {}),
-                    ...(category ? { category: category as "TRANSPORT" | "WATER" | "ENERGY" | "RECYCLING" | "FOOD" } : {}),
+                    ...categoryFilter,
                   },
                   select: { points: true },
                 },
@@ -223,17 +276,25 @@ export async function GET(req: Request) {
         const totalPoints = team.members.reduce(
           (teamSum, member) =>
             teamSum + member.user.actions.reduce((s, a) => s + a.points, 0),
-          0
+          0,
         );
-        return { id: team.id, name: team.name, totalPoints, memberCount: team.members.length };
+        return {
+          id: team.id,
+          name: team.name,
+          totalPoints,
+          memberCount: team.members.length,
+        };
       })
       .sort(
-        (a, b) => b.totalPoints - a.totalPoints || compareNames(a.name, b.name)
+        (a, b) => b.totalPoints - a.totalPoints || compareNames(a.name, b.name),
       );
 
     return NextResponse.json(addDenseRanksToTeams(leaderboard));
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Failed to fetch leaderboard" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch leaderboard" },
+      { status: 500 },
+    );
   }
 }
